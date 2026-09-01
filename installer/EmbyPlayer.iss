@@ -1,4 +1,4 @@
-; EmbyPlayer Inno Setup 脚本
+﻿; EmbyPlayer Inno Setup 脚本
 ; 单脚本两产物：用 iscc /DSC 或 iscc /DFD 切换变体
 ;   SC = Self-Contained，自带 .NET 9 运行时（约 150MB）
 ;   FD = Framework-Dependent，需用户自行安装 .NET 9 Desktop Runtime（约 50MB）
@@ -11,11 +11,11 @@
 
 #ifdef SC
   #define Variant     "SC"
-  #define PublishDir   "dist\publish-sc"
+  #define PublishDir   "..\dist\publish-sc"
   #define VariantName "自带 .NET 9 运行时"
 #else
   #define Variant     "FD"
-  #define PublishDir   "dist\publish-fd"
+  #define PublishDir   "..\dist\publish-fd"
   #define VariantName "需自行安装 .NET 9 Desktop Runtime"
 #endif
 
@@ -39,9 +39,9 @@ DefaultDirName={autopf}\EmbyPlayer
 DefaultGroupName=EmbyPlayer
 UninstallDisplayIcon={app}\EmbyPlayer.exe
 UninstallDisplayName={#AppName} {#AppVersion}
-OutputDir=dist
+OutputDir=..\dist
 OutputBaseFilename=EmbyPlayer-Setup-x64-{#Variant}-{#AppVersion}
-SetupIconFile=src\EmbyPlayer\Assets\app-icon.ico
+SetupIconFile=..\src\EmbyPlayer\Assets\app-icon.ico
 Compression=lzma2/ultra
 SolidCompression=yes
 WizardStyle=modern

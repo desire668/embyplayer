@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   构建 EmbyPlayer 安装包（Self-Contained + Framework-Dependent 两变体）。
 
@@ -30,7 +30,12 @@ param(
 $ErrorActionPreference = 'Stop'
 
 # 解析仓库根目录（scripts 的父目录）
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+# 多 fallback 兼容 -File 调用、& 调用、pwsh 7+、WinPS 5.1
+$scriptDir = $PSScriptRoot
+if (-not $scriptDir -and $PSCommandPath) { $scriptDir = Split-Path $PSCommandPath -Parent }
+if (-not $scriptDir -and $MyInvocation.MyCommand.Path) { $scriptDir = Split-Path $MyInvocation.MyCommand.Path -Parent }
+if (-not $scriptDir) { throw "无法解析脚本目录，请用 powershell -File 显式调用本脚本" }
+$repoRoot = (Resolve-Path (Join-Path $scriptDir '..')).Path
 $csproj   = Join-Path $repoRoot 'src\EmbyPlayer\EmbyPlayer.csproj'
 $iss      = Join-Path $repoRoot 'installer\EmbyPlayer.iss'
 $distDir  = Join-Path $repoRoot 'dist'
