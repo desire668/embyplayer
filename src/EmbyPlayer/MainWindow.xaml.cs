@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.IO;
 using Windows.Graphics;
+using Windows.System;
 
 namespace EmbyPlayer;
 
@@ -147,6 +148,91 @@ public sealed partial class MainWindow : Window
             case "Settings":
                 navigation.NavigateTo<SettingsPage>();
                 break;
+        }
+    }
+
+    /// <summary>
+    /// 显示更新对话框。传入非空 update 则提示新版本，传入 null 行为取决于 isAutoCheck：
+    /// 自动检查（启动时）静默不弹窗；手动检查（设置页）提示「已是最新版本」。
+    /// </summary>
+    public async Task ShowUpdateDialogAsync(UpdateInfo? update, bool isAutoCheck = false)
+    {
+        try
+        {
+            // 自动检查没发现更新：不打扰用户
+            if (update is null && isAutoCheck)
+            {
+                return;
+            }
+
+            var dialog = new ContentDialog
+            {
+                XamlRoot = this.Content?.XamlRoot
+                    ?? throw new InvalidOperationException("MainWindow.Content.XamlRoot 尚未就绪"),
+                PrimaryButtonText = "前往下载",
+                SecondaryButtonText = "暂不更新",
+                DefaultButton = ContentDialogButton.Primary
+            };
+
+            if (update is null)
+            {
+                // 手动检查发现已是最新版
+                dialog.Title = "已是最新版本";
+                dialog.Content = new TextBlock
+                {
+                    Text = $"当前版本 v{UpdateService.CurrentVersionString}",
+                    TextWrapping = TextWrapping.Wrap,
+                    IsTextSelectionEnabled = true
+                };
+                dialog.PrimaryButtonText = "";
+                dialog.SecondaryButtonText = "好的";
+                dialog.DefaultButton = ContentDialogButton.Secondary;
+            }
+            else
+            {
+                dialog.Title = $"发现新版本 {update.LatestTag}";
+
+                // 内容：版本提示 + Release notes（Markdown 原文，纯文本展示）
+                var notes = string.IsNullOrEmpty(update.ReleaseNotes)
+                    ? "（无更新说明）"
+                    : update.ReleaseNotes;
+                if (notes.Length > 1500)
+                {
+                    notes = notes.Substring(0, 1500) + "\n\n……（完整说明见 Release 页面）";
+                }
+
+                var contentPanel = new StackPanel { Spacing = 8 };
+                contentPanel.Children.Add(new TextBlock
+                {
+                    Text = $"当前版本 v{UpdateService.CurrentVersionString}  →  最新版本 {update.LatestTag}",
+                    Opacity = 0.7,
+                    TextWrapping = TextWrapping.Wrap
+                });
+                contentPanel.Children.Add(new ScrollViewer
+                {
+                    Content = new TextBlock
+                    {
+                        Text = notes,
+                        TextWrapping = TextWrapping.Wrap,
+                        IsTextSelectionEnabled = true
+                    },
+                    MaxHeight = 320,
+                    Padding = new Thickness(0)
+                });
+
+                dialog.Content = contentPanel;
+            }
+
+            var result = await dialog.ShowAsync();
+            if (result == ContentDialogResult.Primary && update is not null && !string.IsNullOrEmpty(update.ReleaseUrl))
+            {
+                await Launcher.LaunchUriAsync(new Uri(update.ReleaseUrl));
+            }
+        }
+        catch (Exception ex)
+        {
+            // XamlRoot 未就绪 / 弹窗竞态等：写崩溃日志但不影响用户使用
+            App.WriteCrashLog($"显示更新对话框失败：{ex}");
         }
     }
 }

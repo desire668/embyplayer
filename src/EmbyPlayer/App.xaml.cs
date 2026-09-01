@@ -46,6 +46,7 @@ public partial class App : Application
         services.AddSingleton<MpvController>();
         services.AddSingleton<PlaybackSessionManager>();
         services.AddSingleton<PlaybackService>();
+        services.AddSingleton<UpdateService>();
         services.AddTransient<LoginViewModel>();
         services.AddTransient<LibraryViewModel>();
         services.AddTransient<DetailViewModel>();
@@ -88,6 +89,39 @@ public partial class App : Application
         {
             navigation.ShowShellNavigation(false);
             navigation.NavigateTo<LoginPage>();
+        }
+
+        // 启动时静默检查 GitHub Release 是否有新版本，发现新版本时弹窗让用户选择前往下载或暂不更新
+        // fire-and-forget：不阻塞启动流程；任何失败写入崩溃日志但不打扰用户
+        _ = CheckForUpdateOnLaunchAsync();
+    }
+
+    /// <summary>启动后异步检查更新；发现新版本时切回 UI 线程弹窗。</summary>
+    private async Task CheckForUpdateOnLaunchAsync()
+    {
+        try
+        {
+            // 等待窗口内容渲染完成，避免 ContentDialog 抢占 XamlRoot 出现竞态
+            await Task.Delay(TimeSpan.FromSeconds(1.5));
+
+            var updateService = Services.GetRequiredService<UpdateService>();
+            var update = await updateService.CheckForUpdateAsync();
+            if (update is null)
+            {
+                return;
+            }
+
+            _window?.DispatcherQueue.TryEnqueue(() =>
+            {
+                if (_window is MainWindow mw)
+                {
+                    _ = mw.ShowUpdateDialogAsync(update, isAutoCheck: true);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            WriteCrashLog($"启动时检查更新失败：{ex}");
         }
     }
 

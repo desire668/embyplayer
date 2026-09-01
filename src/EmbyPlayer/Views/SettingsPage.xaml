@@ -31,6 +31,23 @@
                                VerticalAlignment="Center" Opacity="0.7" TextWrapping="Wrap" />
                 </StackPanel>
             </StackPanel>
+
+            <StackPanel Spacing="6">
+                <TextBlock Text="关于" FontSize="16" FontWeight="SemiBold" />
+                <TextBlock Opacity="0.8" IsTextSelectionEnabled="True">
+                    <Run Text="EmbyPlayer " />
+                    <Run Text="{x:Bind ViewModel.AppVersion, Mode=OneWay}" />
+                </TextBlock>
+                <HyperlinkButton Content="GitHub 仓库：desire668/embyplayer"
+                                 Command="{x:Bind ViewModel.OpenGitHubCommand}" />
+                <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,4,0,0">
+                    <Button Content="检查更新"
+                            Command="{x:Bind ViewModel.CheckUpdateCommand}" />
+                    <ProgressRing IsActive="{x:Bind ViewModel.IsCheckingUpdate, Mode=OneWay}"
+                                  Width="20" Height="20"
+                                  VerticalAlignment="Center" />
+                </StackPanel>
+            </StackPanel>
         </StackPanel>
     </ScrollViewer>
 </Page>

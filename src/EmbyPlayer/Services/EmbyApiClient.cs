@@ -18,7 +18,8 @@ public sealed class EmbyApiException : Exception
 public sealed class EmbyApiClient : IDisposable
 {
     private const string ClientName = "EmbyPlayer";
-    private const string ClientVersion = "1.0.0";
+    // 与 csproj AssemblyVersion 自动同步，避免发版后忘记更新
+    private static readonly string ClientVersion = UpdateService.CurrentVersionString;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
