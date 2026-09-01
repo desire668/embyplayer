@@ -1,0 +1,20 @@
+# Build output
+bin/
+obj/
+[Bb]uild/
+dist/
+publish/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userprefs
+
+# Misc
+*.log
+crash.log
+.cache/
+.trae/

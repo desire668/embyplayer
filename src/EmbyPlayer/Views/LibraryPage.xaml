@@ -1,0 +1,133 @@
+<Page
+    x:Class="EmbyPlayer.Views.LibraryPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:EmbyPlayer.ViewModels">
+
+    <Grid Padding="24,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- 顶部：分类 Tab + 排序工具栏 -->
+        <Grid Grid.Row="0" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 分类 ListView -->
+            <ListView Grid.Column="0" SelectionMode="Single"
+                      ItemsSource="{x:Bind ViewModel.Views, Mode=OneWay}"
+                      SelectedItem="{x:Bind ViewModel.SelectedView, Mode=TwoWay}">
+                <ListView.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <ItemsStackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </ListView.ItemsPanel>
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ViewInfo">
+                        <TextBlock Text="{x:Bind Name}" Padding="6,0" MaxWidth="140"
+                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+
+            <!-- 全部分类按钮 -->
+            <Button Grid.Column="1" Content="⋯" VerticalAlignment="Center"
+                    ToolTipService.ToolTip="全部分类" Click="ShowAllViews_Click">
+                <Button.Flyout>
+                    <Flyout x:Name="AllViewsFlyout" Placement="Bottom">
+                        <ListView x:Name="AllViewsList"
+                                  ItemsSource="{x:Bind ViewModel.Views, Mode=OneWay}"
+                                  SelectionMode="None" IsItemClickEnabled="True"
+                                  ItemClick="AllViewsList_ItemClick"
+                                  MaxHeight="360" MinWidth="180">
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ViewInfo">
+                                    <TextBlock Text="{x:Bind Name}" MaxWidth="240"
+                                               TextTrimming="CharacterEllipsis" />
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </Flyout>
+                </Button.Flyout>
+            </Button>
+
+            <!-- 排序工具栏 -->
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8"
+                        VerticalAlignment="Center">
+                <TextBlock Text="排序：" VerticalAlignment="Center" Opacity="0.7" />
+
+                <ComboBox Width="110"
+                          ItemsSource="{x:Bind ViewModel.AvailableSortOptions, Mode=OneWay}"
+                          SelectedItem="{x:Bind ViewModel.SelectedSortBy, Mode=TwoWay}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:SortOption">
+                            <TextBlock Text="{x:Bind Display}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+
+                <ToggleButton Width="80"
+                              Content="{x:Bind ViewModel.SortOrderDisplay, Mode=OneWay}"
+                              IsChecked="{x:Bind ViewModel.SortAscending, Mode=TwoWay}" />
+            </StackPanel>
+        </Grid>
+
+        <Grid Grid.Row="1">
+            <GridView ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}"
+                      SelectionMode="None" IsItemClickEnabled="True"
+                      ItemClick="ItemsGrid_ItemClick">
+                <GridView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ItemCard">
+                        <Grid Width="180" Height="330" Background="Transparent">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="255" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <Border Grid.Row="0" CornerRadius="8" Background="#FF2A2A2E">
+                                <Grid>
+                                    <TextBlock Text="{x:Bind Initial}" FontSize="48" Foreground="#FF777777"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <Image Visibility="{x:Bind ImageVisibility}" Stretch="UniformToFill">
+                                        <Image.Source>
+                                            <BitmapImage UriSource="{x:Bind ImageUri}" />
+                                        </Image.Source>
+                                    </Image>
+                                    <Border Visibility="{x:Bind WatchedVisibility}"
+                                            Background="#CC2E7D32" CornerRadius="4"
+                                            Padding="6,2" HorizontalAlignment="Right"
+                                            VerticalAlignment="Top" Margin="0,8,8,0">
+                                        <TextBlock Text="✓" Foreground="White" FontWeight="Bold" />
+                                    </Border>
+                                </Grid>
+                            </Border>
+
+                            <StackPanel Grid.Row="1" Margin="2,8,2,0" Spacing="4">
+                                <TextBlock Text="{x:Bind Name}" FontSize="14" FontWeight="SemiBold"
+                                           MaxLines="2" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
+                                <TextBlock Text="{x:Bind Year}" FontSize="12" Opacity="0.6"
+                                           Visibility="{x:Bind YearVisibility}" />
+                                <ProgressBar Minimum="0" Maximum="100"
+                                             Value="{x:Bind ResumePercent}"
+                                             Visibility="{x:Bind ResumeVisibility}" />
+                            </StackPanel>
+                        </Grid>
+                    </DataTemplate>
+                </GridView.ItemTemplate>
+            </GridView>
+
+            <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                          HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+            <TextBlock Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       TextWrapping="Wrap" MaxWidth="500" />
+        </Grid>
+    </Grid>
+</Page>

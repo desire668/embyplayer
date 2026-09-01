@@ -1,0 +1,21 @@
+<Page
+    x:Class="EmbyPlayer.Views.ResumePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:EmbyPlayer.Views">
+
+    <Grid Padding="24,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="最近播放" FontSize="24" FontWeight="Bold" Margin="0,0,0,12" />
+
+        <local:MediaGridControl Grid.Row="1"
+                                Items="{x:Bind ViewModel.Items, Mode=OneWay}"
+                                IsLoading="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                ErrorMessage="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                                ItemChosen="OnItemChosen" />
+    </Grid>
+</Page>

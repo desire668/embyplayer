@@ -1,0 +1,36 @@
+<Page
+    x:Class="EmbyPlayer.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer>
+        <StackPanel Padding="24" Spacing="20" MaxWidth="640" HorizontalAlignment="Left">
+
+            <TextBlock Text="设置" FontSize="28" FontWeight="Bold" />
+
+            <StackPanel Spacing="4">
+                <TextBlock Text="账户" FontSize="16" FontWeight="SemiBold" />
+                <TextBlock Text="{x:Bind ViewModel.ServerInfo, Mode=OneWay}" Opacity="0.8" />
+                <Button Content="退出登录" Command="{x:Bind ViewModel.LogoutCommand}" Margin="0,8,0,0" />
+            </StackPanel>
+
+            <StackPanel Spacing="4">
+                <TextBlock Text="播放" FontSize="16" FontWeight="SemiBold" />
+                <ToggleSwitch Header="播完自动播放下一集"
+                              IsOn="{x:Bind ViewModel.AutoPlayNext, Mode=TwoWay}" />
+            </StackPanel>
+
+            <StackPanel Spacing="4">
+                <TextBlock Text="播放器" FontSize="16" FontWeight="SemiBold" />
+                <TextBox Header="mpv.exe 路径（留空则自动探测）"
+                         Text="{x:Bind ViewModel.MpvPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,8,0,0">
+                    <Button Content="浏览…" Click="BrowseMpv_Click" />
+                    <Button Content="自动探测" Command="{x:Bind ViewModel.DetectMpvCommand}" />
+                    <TextBlock Text="{x:Bind ViewModel.MpvStatus, Mode=OneWay}"
+                               VerticalAlignment="Center" Opacity="0.7" TextWrapping="Wrap" />
+                </StackPanel>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

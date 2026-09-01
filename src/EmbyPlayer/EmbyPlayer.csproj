@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>EmbyPlayer</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <ApplicationIcon>Assets\app-icon.ico</ApplicationIcon>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- MVVMTK0045 仅与 NativeAOT 相关，本项目为普通（非 AOT）部署 -->
+    <NoWarn>$(NoWarn);MVVMTK0045</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.*" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
+  </ItemGroup>
+
+  <!-- 开发布局：把仓库根 tools/mpv/mpv.exe 复制到输出，供 MpvLocator 在 BaseDirectory 命中 -->
+  <ItemGroup>
+    <None Include="..\..\tools\mpv\mpv.exe" Link="mpv.exe"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('..\..\tools\mpv\mpv.exe')" />
+  </ItemGroup>
+
+  <!-- mpv 汉化配置：复制到输出 portable_config 目录（与 mpv.exe 同级，mpv 自动加载） -->
+  <ItemGroup>
+    <None Include="mpv\portable_config\**" Link="portable_config\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- 便携部署：附带 VC++ 运行库，目标电脑无需另行安装 VC++ Redistributable -->
+  <ItemGroup>
+    <None Include="$(Windir)\System32\vcruntime140.dll" Link="vcruntime140.dll"
+          CopyToOutputDirectory="PreserveNewest" Condition="Exists('$(Windir)\System32\vcruntime140.dll')" />
+    <None Include="$(Windir)\System32\vcruntime140_1.dll" Link="vcruntime140_1.dll"
+          CopyToOutputDirectory="PreserveNewest" Condition="Exists('$(Windir)\System32\vcruntime140_1.dll')" />
+    <None Include="$(Windir)\System32\msvcp140.dll" Link="msvcp140.dll"
+          CopyToOutputDirectory="PreserveNewest" Condition="Exists('$(Windir)\System32\msvcp140.dll')" />
+    <None Include="Assets\app-icon.ico" Link="app-icon.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

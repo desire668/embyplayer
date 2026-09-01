@@ -1,0 +1,59 @@
+<UserControl
+    x:Class="EmbyPlayer.Views.MediaGridControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:EmbyPlayer.ViewModels">
+
+    <Grid>
+        <GridView ItemsSource="{x:Bind Items, Mode=OneWay}"
+                  SelectionMode="None" IsItemClickEnabled="True"
+                  ItemClick="Grid_ItemClick">
+            <GridView.ItemTemplate>
+                <DataTemplate x:DataType="vm:ItemCard">
+                    <Grid Width="180" Height="330" Background="Transparent">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="255" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0" CornerRadius="8" Background="#FF2A2A2E">
+                            <Grid>
+                                <TextBlock Text="{x:Bind Initial}" FontSize="48" Foreground="#FF777777"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <Image Visibility="{x:Bind ImageVisibility}" Stretch="UniformToFill">
+                                    <Image.Source>
+                                        <BitmapImage UriSource="{x:Bind ImageUri}" />
+                                    </Image.Source>
+                                </Image>
+                                <Border Visibility="{x:Bind WatchedVisibility}"
+                                        Background="#CC2E7D32" CornerRadius="4"
+                                        Padding="6,2" HorizontalAlignment="Right"
+                                        VerticalAlignment="Top" Margin="0,8,8,0">
+                                    <TextBlock Text="✓" Foreground="White" FontWeight="Bold" />
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <StackPanel Grid.Row="1" Margin="2,8,2,0" Spacing="4">
+                            <TextBlock Text="{x:Bind Name}" FontSize="14" FontWeight="SemiBold"
+                                       MaxLines="2" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
+                            <TextBlock Text="{x:Bind Year}" FontSize="12" Opacity="0.6"
+                                       Visibility="{x:Bind YearVisibility}" />
+                            <ProgressBar Minimum="0" Maximum="100"
+                                         Value="{x:Bind ResumePercent}"
+                                         Visibility="{x:Bind ResumeVisibility}" />
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </GridView.ItemTemplate>
+        </GridView>
+
+        <ProgressRing IsActive="{x:Bind IsLoading, Mode=OneWay}"
+                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+        <TextBlock Text="{x:Bind ErrorMessage, Mode=OneWay}"
+                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   TextWrapping="Wrap" MaxWidth="500" />
+    </Grid>
+</UserControl>

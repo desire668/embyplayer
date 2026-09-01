@@ -1,0 +1,8 @@
+# Binary / large files tracked via Git LFS to keep repo light and
+# work around GitHub's 100MB single-file limit.
+tools/mpv/mpv.exe              filter=lfs diff=lfs merge=lfs -text
+tools/mpv/d3dcompiler_43.dll  filter=lfs diff=lfs merge=lfs -text
+
+# Normalize line endings (autocrlf=true is the default on Windows,
+# but pin explicit policy for cross-platform contributors).
+* text=auto eol=lf
