@@ -113,6 +113,24 @@ function Publish-Variant {
     } else {
         throw "publish 输出中未找到 EmbyPlayer.exe: $publishDir"
     }
+
+    # dotnet publish 已知坑：WinUI3 unpackaged 应用的 <AssemblyName>.pri（XAML 资源索引，
+    # 内含 .xbf 编译产物）不会随 publish 自动拷贝到输出目录，导致运行时
+    # Microsoft.UI.Xaml.Markup.XamlParseException: XAML parsing failed。
+    # 此处从 build 输出目录手动补回。
+    $priInPublish = Join-Path $publishDir 'EmbyPlayer.pri'
+    if (-not (Test-Path $priInPublish)) {
+        $priInBuild = Get-ChildItem -Path (Join-Path $repoRoot 'src\EmbyPlayer\bin\x64\Release') `
+            -Filter 'EmbyPlayer.pri' -Recurse -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($priInBuild) {
+            Copy-Item $priInBuild.FullName $priInPublish -Force
+            Write-Host ("  补回 EmbyPlayer.pri ({0:N1} KB) <- {1}" -f ($priInBuild.Length / 1KB), $priInBuild.FullName) -ForegroundColor Yellow
+        } else {
+            Write-Warning "未在 bin\x64\Release 下找到 EmbyPlayer.pri，运行时将 XAML 解析失败！"
+        }
+    }
+
     # 简要列出 publish 目录总大小
     $totalBytes = (Get-ChildItem $publishDir -Recurse -File | Measure-Object Length -Sum).Sum
     Write-Host ("  publish 总大小: {0:N1} MB" -f ($totalBytes / 1MB))
