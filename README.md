@@ -24,6 +24,13 @@ WinUI3 桌面客户端，用于浏览与播放 Emby 媒体服务器的内容，�
 
 ## 从源码构建
 
+### CI 自动构建（推荐）
+
+推送 `v*` 形式的 tag（如 `git tag v1.0.0 && git push origin v1.0.0`）即可触发 GitHub Actions：
+自动安装 .NET 9 SDK + Inno Setup 6、构建 SC / FD 两个安装包，并发布对应版本的 Release。
+
+也可在 GitHub 仓库 **Actions** 页手动触发 `Build and Release` workflow（仅构建 artifact，默认不发 Release）。
+
 ### 依赖
 
 - [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)（仅编译需要，运行时可由安装包附带）
@@ -61,7 +68,10 @@ EmbyPlayer.sln
 │  └─ Assets\                  应用图标
 ├─ tools\mpv\                  开发期使用的 mpv 二进制
 ├─ installer\EmbyPlayer.iss    Inno Setup 脚本（SC / FD 单脚本两产物）
-└─ scripts\build-installer.ps1 发布编排
+├─ scripts\build-installer.ps1 发布编排
+└─ .github\
+   ├─ workflows\build-release.yml   CI 构建（tag push / 手动触发）
+   └─ release-notes\v1.0.0.md       版本对应的 Release 说明
 ```
 
 ## License

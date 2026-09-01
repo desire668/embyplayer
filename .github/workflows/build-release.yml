@@ -1,0 +1,150 @@
+name: Build and Release
+
+# 触发条件：
+#   1) 推送 v* 形式的 tag（如 v1.0.0）→ 自动构建两个安装包并发布 Release
+#   2) 手动 workflow_dispatch → 仅构建并上传 artifact，可选是否发 Release
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Build 后是否创建 GitHub Release（仅在未推 tag 的手动触发时生效）'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write   # gh release create 需要写权限
+
+concurrency:
+  group: build-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build installers (x64 SC + FD)
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout (with LFS for tools/mpv/mpv.exe)
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+          fetch-depth: 0
+
+      - name: Setup .NET 9 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+          dotnet-quality: 'ga'
+
+      - name: Install Inno Setup 6
+        shell: pwsh
+        run: |
+          Write-Host 'Installing Inno Setup 6 via Chocolatey...'
+          choco install innosetup -y --no-progress
+          # 把 Inno Setup 安装目录追加到 GITHUB_PATH，供后续步骤使用
+          $innoDir = 'C:\Program Files (x86)\Inno Setup 6'
+          if (-not (Test-Path $innoDir)) { $innoDir = 'C:\Program Files\Inno Setup 6' }
+          if (Test-Path $innoDir) {
+            Add-Content -Path $env:GITHUB_PATH -Value $innoDir
+            Write-Host "Added to PATH: $innoDir"
+          } else {
+            throw "Inno Setup install dir not found after choco install"
+          }
+
+      - name: Ensure ChineseSimplified.isl present
+        shell: pwsh
+        run: |
+          $innoDir = 'C:\Program Files (x86)\Inno Setup 6'
+          if (-not (Test-Path $innoDir)) { $innoDir = 'C:\Program Files\Inno Setup 6' }
+          $isl = Join-Path $innoDir 'Languages\ChineseSimplified.isl'
+          if (-not (Test-Path $isl)) {
+            Write-Host "ChineseSimplified.isl missing, downloading from official Inno Setup repo..."
+            New-Item -ItemType Directory -Force -Path (Split-Path $isl) | Out-Null
+            $url = 'https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/ChineseSimplified.isl'
+            Invoke-WebRequest -Uri $url -OutFile $isl -UseBasicParsing
+            Write-Host "Downloaded to: $isl"
+          } else {
+            Write-Host "ChineseSimplified.isl already present at $isl"
+          }
+
+      - name: Build installers (publish SC+FD + ISCC)
+        shell: pwsh
+        run: |
+          ./scripts/build-installer.ps1 -Variant All
+
+      - name: Verify artifacts
+        shell: pwsh
+        run: |
+          Write-Host '=== Build artifacts ==='
+          $files = Get-ChildItem dist -Filter 'EmbyPlayer-Setup-*.exe' -ErrorAction SilentlyContinue
+          if (-not $files) { throw 'No installer exe found in dist/' }
+          foreach ($f in $files) {
+            $mb = [math]::Round($f.Length / 1MB, 2)
+            Write-Host ("  {0}  ({1} MB)" -f $f.Name, $mb)
+          }
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: EmbyPlayer-Setup-${{ github.run_number }}
+          path: dist/EmbyPlayer-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Create GitHub Release
+        if: ${{ github.event_name == 'push' || inputs.create_release == true }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 解析 tag 名：tag push 取 tag；手动触发时生成 CI tag
+          if ($env:GITHUB_REF -match 'refs/tags/(.+)') {
+            $tag = $matches[1]
+          } else {
+            $tag = 'v1.0.0-ci.' + $env:GITHUB_RUN_NUMBER
+          }
+          Write-Host "Preparing release for tag: $tag"
+
+          $sc = (Get-ChildItem dist -Filter 'EmbyPlayer-Setup-x64-SC-*.exe' | Select-Object -First 1).FullName
+          $fd = (Get-ChildItem dist -Filter 'EmbyPlayer-Setup-x64-FD-*.exe' | Select-Object -First 1).FullName
+          Write-Host "SC installer: $sc"
+          Write-Host "FD installer: $fd"
+
+          # 取 tag 去掉 'v' 前缀后查找版本对应的 release notes
+          $verPart = $tag -replace '^v', ''
+          $notesFile = ".github/release-notes/$verPart.md"
+          $notes = ''
+          if (Test-Path $notesFile) {
+            $notes = Get-Content $notesFile -Raw
+            Write-Host "Loaded release notes from $notesFile"
+          } else {
+            $notes = "EmbyPlayer $tag - auto-built by GitHub Actions run #$env:GITHUB_RUN_NUMBER."
+            Write-Host "Release notes file not found at $notesFile, using default"
+          }
+
+          # 若已存在则先删除（便于手动重跑覆盖）
+          gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists, deleting and recreating..."
+            gh release delete $tag --repo $env:GITHUB_REPOSITORY --yes --cleanup-tag
+          }
+
+          # 创建 tag（若不是由 tag push 触发）+ release
+          if ($env:GITHUB_REF -notmatch 'refs/tags/') {
+            $isLatest = '--latest'
+          } else {
+            $isLatest = '--latest'
+          }
+          gh release create $tag $sc $fd `
+            --repo $env:GITHUB_REPOSITORY `
+            --title "EmbyPlayer $tag" `
+            --notes $notes `
+            $isLatest
+
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed (exit $LASTEXITCODE)" }
+          Write-Host "Release $tag published successfully."

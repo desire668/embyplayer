@@ -46,7 +46,7 @@ Write-Host "Installer : $iss"
 Write-Host "Variant   : $Variant"
 Write-Host ""
 
-# 定位 dotnet（优先用户级，系统级 dotnet 只有 runtime 没有 SDK）
+# 定位 dotnet（优先用户级，系统级 dotnet 只有 runtime 没有 SDK；CI 走 PATH）
 $dotnet = $null
 $candidates = @(
     "$env:LOCALAPPDATA\Microsoft\dotnet\dotnet.exe",
@@ -56,16 +56,28 @@ $candidates = @(
 foreach ($c in $candidates) {
     if (Test-Path $c) { $dotnet = $c; break }
 }
+if (-not $dotnet) {
+    $cmd = Get-Command dotnet.exe -ErrorAction SilentlyContinue
+    if ($cmd) { $dotnet = $cmd.Source }
+}
 if (-not $dotnet) { throw "dotnet.exe 未找到，请先安装 .NET 9 SDK" }
 Write-Host ("dotnet    : {0}" -f $dotnet)
 
-# 定位 ISCC
-$iscc = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
-if (-not (Test-Path $iscc)) {
-    $alt = Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse -Filter 'ISCC.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($alt) { $iscc = $alt.FullName }
+# 定位 ISCC（兼容本地用户级安装、CI 的 Program Files 安装、以及 PATH 中的 iscc）
+$iscc = $null
+$candidates = @(
+    "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
+    "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+    "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+)
+foreach ($c in $candidates) {
+    if ($c -and (Test-Path $c)) { $iscc = $c; break }
 }
-if (-not (Test-Path $iscc)) { throw "ISCC.exe 未找到，请先安装 Inno Setup 6" }
+if (-not $iscc) {
+    $cmd = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+    if ($cmd) { $iscc = $cmd.Source }
+}
+if (-not $iscc) { throw "ISCC.exe 未找到，请先安装 Inno Setup 6" }
 Write-Host ("ISCC      : {0}" -f $iscc)
 Write-Host ""
 
