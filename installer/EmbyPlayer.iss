@@ -1,4 +1,4 @@
-﻿; EmbyPlayer Inno Setup 脚本
+; EmbyPlayer Inno Setup 脚本
 ; 单脚本两产物：用 iscc /DSC 或 iscc /DFD 切换变体
 ;   SC = Self-Contained，自带 .NET 9 运行时（约 150MB）
 ;   FD = Framework-Dependent，需用户自行安装 .NET 9 Desktop Runtime（约 50MB）
@@ -20,7 +20,7 @@
 #endif
 
 #define AppName    "EmbyPlayer"
-#define AppVersion "1.0.1"
+#define AppVersion "1.0.2"
 #define AppURL     "https://github.com/desire668/embyplayer"
 
 [Setup]
