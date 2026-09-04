@@ -2,11 +2,13 @@ using EmbyPlayer.Models;
 using EmbyPlayer.Services;
 using EmbyPlayer.Views;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.IO;
 using Windows.Graphics;
 using Windows.System;
+using Windows.UI;
 
 namespace EmbyPlayer;
 
@@ -30,6 +32,11 @@ public sealed partial class MainWindow : Window
         {
             AppWindow.SetIcon(iconPath);
         }
+
+        // 标题栏跟随应用主题：暗色纯黑、亮色白色，主题切换时同步刷新
+        // （Window 本身无 ActualTheme，借助根元素 NavView 的主题）
+        ApplyThemeTitleBar(NavView.ActualTheme);
+        NavView.ActualThemeChanged += (_, _) => ApplyThemeTitleBar(NavView.ActualTheme);
 
         var settings = App.Services.GetRequiredService<SettingsService>();
         settings.ServersChanged += () => DispatcherQueue.TryEnqueue(RefreshServerBox);
@@ -66,6 +73,50 @@ public sealed partial class MainWindow : Window
     }
 
     public IntPtr Hwnd => (IntPtr)(long)AppWindow.Id.Value;
+
+    /// <summary>标题栏跟随应用主题：暗色纯黑白字、亮色白底黑字；按钮悬停/按下用中性灰阶。</summary>
+    private void ApplyThemeTitleBar(ElementTheme theme)
+    {
+        try
+        {
+            var titleBar = AppWindow.TitleBar;
+            if (theme == ElementTheme.Dark)
+            {
+                titleBar.BackgroundColor = Colors.Black;
+                titleBar.ForegroundColor = Colors.White;
+                titleBar.InactiveBackgroundColor = Colors.Black;
+                titleBar.InactiveForegroundColor = Color.FromArgb(255, 160, 160, 160);
+
+                titleBar.ButtonBackgroundColor = Colors.Black;
+                titleBar.ButtonForegroundColor = Colors.White;
+                titleBar.ButtonHoverBackgroundColor = Color.FromArgb(255, 40, 40, 40);
+                titleBar.ButtonHoverForegroundColor = Colors.White;
+                titleBar.ButtonPressedBackgroundColor = Color.FromArgb(255, 64, 64, 64);
+                titleBar.ButtonPressedForegroundColor = Colors.White;
+            }
+            else
+            {
+                titleBar.BackgroundColor = Colors.White;
+                titleBar.ForegroundColor = Colors.Black;
+                titleBar.InactiveBackgroundColor = Colors.White;
+                titleBar.InactiveForegroundColor = Color.FromArgb(255, 160, 160, 160);
+
+                titleBar.ButtonBackgroundColor = Colors.White;
+                titleBar.ButtonForegroundColor = Colors.Black;
+                titleBar.ButtonHoverBackgroundColor = Color.FromArgb(255, 229, 229, 229);
+                titleBar.ButtonHoverForegroundColor = Colors.Black;
+                titleBar.ButtonPressedBackgroundColor = Color.FromArgb(255, 204, 204, 204);
+                titleBar.ButtonPressedForegroundColor = Colors.Black;
+            }
+
+            titleBar.ButtonInactiveBackgroundColor = titleBar.InactiveBackgroundColor;
+            titleBar.ButtonInactiveForegroundColor = titleBar.InactiveForegroundColor;
+        }
+        catch (Exception ex)
+        {
+            App.WriteCrashLog($"应用标题栏主题色失败：{ex}");
+        }
+    }
 
     private void RefreshServerBox()
     {

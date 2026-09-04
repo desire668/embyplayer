@@ -7,6 +7,32 @@
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- 窗口配色跟随主题：暗主题纯黑，亮主题默认；导航选中态保留品牌蓝 -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#141D3FD8" />
+                    <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPointerOver" Color="#1F1D3FD8" />
+                    <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPressed" Color="#291D3FD8" />
+                    <SolidColorBrush x:Key="NavigationViewItemForegroundSelected" Color="#FF16247F" />
+                    <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPointerOver" Color="#FF16247F" />
+                    <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPressed" Color="#FF16247F" />
+                    <SolidColorBrush x:Key="NavigationViewItemSelectionIndicatorBrush" Color="#FF1D3FD8" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <!-- 暗主题：侧边栏与内容区纯黑 -->
+                    <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="#FF000000" />
+                    <SolidColorBrush x:Key="NavigationViewCollapsedPaneBackground" Color="#FF000000" />
+                    <SolidColorBrush x:Key="NavigationViewContentBackground" Color="#FF000000" />
+                    <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#1F1D3FD8" />
+                    <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPointerOver" Color="#291D3FD8" />
+                    <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPressed" Color="#331D3FD8" />
+                    <SolidColorBrush x:Key="NavigationViewItemForegroundSelected" Color="#FFE8ECFF" />
+                    <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPointerOver" Color="#FFE8ECFF" />
+                    <SolidColorBrush x:Key="NavigationViewItemForegroundSelectedPressed" Color="#FFE8ECFF" />
+                    <SolidColorBrush x:Key="NavigationViewItemSelectionIndicatorBrush" Color="#FF7C9BFF" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>
     </Application.Resources>
 </Application>
