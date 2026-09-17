@@ -56,7 +56,7 @@ public sealed class PlaybackService
         };
     }
 
-    public async Task PlayAsync(PlaybackPlan plan, MediaStreamInfo? subtitle)
+    public async Task PlayAsync(PlaybackPlan plan, MediaStreamInfo? subtitle, string? danmakuFile = null)
     {
         var mpvPath = MpvLocator.Find(_settings)
             ?? throw new FileNotFoundException("未找到 mpv.exe，请在设置页配置路径。");
@@ -71,9 +71,14 @@ public sealed class PlaybackService
         if (_controller.IsRunning)
         {
             await _controller.LoadFileAsync(plan.StreamUrl);
+            await _controller.WaitForFileStartedAsync(TimeSpan.FromSeconds(20));
             if (subtitlePath is not null)
             {
                 await _controller.AddSubtitleAsync(subtitlePath);
+            }
+            if (danmakuFile is not null)
+            {
+                await _controller.AddSubtitleAsync(danmakuFile);
             }
         }
         else
@@ -84,7 +89,8 @@ public sealed class PlaybackService
                 Url = plan.StreamUrl,
                 Title = plan.Item.Name,
                 ResumeSeconds = resumeSeconds,
-                SubtitleFile = subtitlePath
+                SubtitleFile = subtitlePath,
+                DanmakuFile = danmakuFile
             });
         }
         StatusChanged?.Invoke($"正在播放：{plan.Item.Name}");

@@ -22,6 +22,15 @@ public class AppSettings
     public bool AutoPlayNext { get; set; } = true;
     public string? DeviceId { get; set; }
 
+    // 弹幕设置
+    public bool DanmakuEnabled { get; set; } = false;
+    public int DanmakuFontSize { get; set; } = 40;
+    public double DanmakuOpacity { get; set; } = 0.85;
+    public int DanmakuScrollDuration { get; set; } = 8;
+    public double DanmakuDisplayArea { get; set; } = 0.5;
+    /// <summary>弹幕服务器地址：LogVar 弹幕 API 基地址（如 https://host/token），或含 {title} 的旧版直链模板。</summary>
+    public string? DanmakuServerUrl { get; set; }
+
     // 旧版单服务器字段（仅用于迁移）
     public string? ServerUrl { get; set; }
     public string? AccessToken { get; set; }

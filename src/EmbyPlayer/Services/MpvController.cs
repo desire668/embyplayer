@@ -11,6 +11,8 @@ public sealed class MpvLaunchOptions
     public string? Title { get; init; }
     public double ResumeSeconds { get; init; }
     public string? SubtitleFile { get; init; }
+    /// <summary>弹幕 ASS 文件；启动时通过 --sub-files 挂载（比事后 sub-add 更可靠）。</summary>
+    public string? DanmakuFile { get; init; }
 }
 
 /// <summary>
@@ -38,14 +40,46 @@ public sealed class MpvController : IDisposable
     private CancellationTokenSource? _readCts;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private bool _closedRaised;
+    private TaskCompletionSource<bool>? _fileStartedTcs;
 
     public double LastKnownPosition { get; private set; }
     public double LastKnownDuration { get; private set; }
     public bool IsRunning => _process is { HasExited: false };
 
+    /// <summary>
+    /// 等待 mpv 真正开始播放当前文件（收到首个 playback-time）。
+    /// 外挂字幕（sub-add）必须在此之后追加，否则会在文件轨道表建立前被丢弃。
+    /// 超时不抛异常，调用方可继续尝试。
+    /// </summary>
+    public async Task WaitForFileStartedAsync(TimeSpan timeout, CancellationToken ct = default)
+    {
+        var tcs = _fileStartedTcs;
+        if (tcs is null)
+        {
+            return;
+        }
+        var winner = await Task.WhenAny(tcs.Task, Task.Delay(timeout, ct));
+        if (winner != tcs.Task)
+        {
+            // 超时：仍继续，让调用方尝试追加（最坏情况与旧行为一致）
+            return;
+        }
+    }
+
+    private void MarkFileStartedPending()
+    {
+        _fileStartedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private void MarkFileStarted()
+    {
+        _fileStartedTcs?.TrySetResult(true);
+    }
+
     public async Task StartAsync(MpvLaunchOptions options, CancellationToken ct = default)
     {
         Cleanup();
+        MarkFileStartedPending();
 
         LastKnownPosition = options.ResumeSeconds;
         LastKnownDuration = 0;
@@ -72,10 +106,32 @@ public sealed class MpvController : IDisposable
         {
             psi.ArgumentList.Add($"--start=+{(long)options.ResumeSeconds}");
         }
+
+        // 弹幕作为主字幕轨（sid=1）在启动时挂载，最可靠；真实字幕作为次字幕轨（secondary-sid=2）同时显示
+        var hasDanmaku = !string.IsNullOrEmpty(options.DanmakuFile);
+        var subFiles = new List<string>();
+        if (hasDanmaku)
+        {
+            subFiles.Add(options.DanmakuFile!);
+        }
         if (!string.IsNullOrEmpty(options.SubtitleFile))
         {
-            psi.ArgumentList.Add($"--sub-files={options.SubtitleFile}");
+            subFiles.Add(options.SubtitleFile!);
         }
+        if (subFiles.Count > 0)
+        {
+            psi.ArgumentList.Add($"--sub-files={string.Join(";", subFiles)}");
+        }
+        if (hasDanmaku)
+        {
+            psi.ArgumentList.Add("--sid=1");
+            if (!string.IsNullOrEmpty(options.SubtitleFile))
+            {
+                psi.ArgumentList.Add("--secondary-sid=2");
+            }
+            psi.ArgumentList.Add($"--script={WriteDanmakuToggleScript()}");
+        }
+
         psi.ArgumentList.Add(options.Url);
 
         _process = new Process { StartInfo = psi, EnableRaisingEvents = true };
@@ -101,6 +157,7 @@ public sealed class MpvController : IDisposable
     {
         LastKnownPosition = 0;
         LastKnownDuration = 0;
+        MarkFileStartedPending();
         await SendCommandAsync(new object[] { "loadfile", url, "replace" });
     }
 
@@ -184,6 +241,7 @@ public sealed class MpvController : IDisposable
                         {
                             var seconds = time.GetDouble();
                             LastKnownPosition = seconds;
+                            MarkFileStarted();
                             PositionChanged?.Invoke(seconds);
                         }
                         else if (name == "duration" && root.TryGetProperty("data", out var dur) &&
@@ -240,6 +298,49 @@ public sealed class MpvController : IDisposable
         {
             _writeLock.Release();
         }
+    }
+
+    /// <summary>
+    /// 生成 mpv 右键/按键切换弹幕的 lua 脚本并写入临时目录，返回路径。
+    /// 通过 external-filename 含 "danmaku_" 识别弹幕轨，切换 sid 实现开关。
+    /// </summary>
+    private static string WriteDanmakuToggleScript()
+    {
+        const string lua = """
+local function find_danmaku_id()
+    local tracks = mp.get_property_native("track-list", {})
+    for _, t in ipairs(tracks) do
+        if t.type == "sub" and t.external_filename and t.external_filename:find("danmaku_") then
+            return t.id
+        end
+    end
+    return nil
+end
+
+local function toggle_danmaku()
+    local id = find_danmaku_id()
+    if not id then
+        mp.osd_message("弹幕：无弹幕轨", 2)
+        return
+    end
+    local cur = mp.get_property_number("sid", -1)
+    if cur == id then
+        mp.set_property("sid", "no")
+        mp.osd_message("弹幕：关", 2)
+    else
+        mp.set_property("sid", tostring(id))
+        mp.osd_message("弹幕：开", 2)
+    end
+end
+
+mp.add_key_binding("MBTN_RIGHT", "toggle_danmaku", toggle_danmaku)
+mp.add_key_binding("d", "toggle_danmaku_key", toggle_danmaku)
+""";
+        var dir = Path.Combine(Path.GetTempPath(), "EmbyPlayer");
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "danmaku_toggle.lua");
+        File.WriteAllText(path, lua);
+        return path;
     }
 
     private void Cleanup()

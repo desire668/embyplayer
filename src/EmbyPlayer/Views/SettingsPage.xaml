@@ -20,6 +20,33 @@
                               IsOn="{x:Bind ViewModel.AutoPlayNext, Mode=TwoWay}" />
             </StackPanel>
 
+            <StackPanel Spacing="8">
+                <TextBlock Text="弹幕" FontSize="16" FontWeight="SemiBold" />
+                <ToggleSwitch Header="播放时加载弹幕"
+                              IsOn="{x:Bind ViewModel.DanmakuEnabled, Mode=TwoWay}" />
+                <TextBox Header="弹幕服务器 URL（LogVar 弹幕 API 基地址，可选）"
+                         Text="{x:Bind ViewModel.DanmakuServerUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         PlaceholderText="例如 https://dm.wodenas.xin/xiatianembydmff" />
+                <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,4,0,0">
+                    <NumberBox Header="字号" Value="{x:Bind ViewModel.DanmakuFontSize, Mode=TwoWay}"
+                               Minimum="20" Maximum="80" SpinButtonPlacementMode="Compact"
+                               Width="120" />
+                    <NumberBox Header="不透明度" Value="{x:Bind ViewModel.DanmakuOpacity, Mode=TwoWay}"
+                               Minimum="0.1" Maximum="1.0" SpinButtonPlacementMode="Compact"
+                               Width="120" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="16">
+                    <NumberBox Header="滚动时长（秒）" Value="{x:Bind ViewModel.DanmakuScrollDuration, Mode=TwoWay}"
+                               Minimum="3" Maximum="20" SpinButtonPlacementMode="Compact"
+                               Width="140" />
+                    <NumberBox Header="显示区域比例" Value="{x:Bind ViewModel.DanmakuDisplayArea, Mode=TwoWay}"
+                               Minimum="0.1" Maximum="1.0" SpinButtonPlacementMode="Compact"
+                               Width="140" />
+                </StackPanel>
+                <TextBlock Opacity="0.6" FontSize="12" TextWrapping="Wrap"
+                           Text="说明：弹幕源支持本地 bilibili XML 文件（播放对话框中浏览选择）或配置弹幕服务器自动获取。填写 LogVar 弹幕 API 基地址（如 https://host/token）后，会按影片名自动搜索并匹配对应集数获取弹幕；若 URL 含 {title} 占位符，则按旧版直链模板请求（{title} 替换为影片名）。" />
+            </StackPanel>
+
             <StackPanel Spacing="4">
                 <TextBlock Text="播放器" FontSize="16" FontWeight="SemiBold" />
                 <TextBox Header="mpv.exe 路径（留空则自动探测）"

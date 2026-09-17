@@ -25,6 +25,25 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _isCheckingUpdate;
 
+    // 弹幕设置
+    [ObservableProperty]
+    private bool _danmakuEnabled;
+
+    [ObservableProperty]
+    private int _danmakuFontSize;
+
+    [ObservableProperty]
+    private double _danmakuOpacity;
+
+    [ObservableProperty]
+    private int _danmakuScrollDuration;
+
+    [ObservableProperty]
+    private double _danmakuDisplayArea;
+
+    [ObservableProperty]
+    private string _danmakuServerUrl = "";
+
     private bool _initialized;
 
     public SettingsViewModel(SettingsService settings, NavigationService navigation, EmbyApiClient api, UpdateService update)
@@ -35,6 +54,12 @@ public partial class SettingsViewModel : ObservableObject
         _update = update;
         _autoPlayNext = settings.Current.AutoPlayNext;
         _mpvPath = settings.Current.MpvPath ?? "";
+        _danmakuEnabled = settings.Current.DanmakuEnabled;
+        _danmakuFontSize = settings.Current.DanmakuFontSize;
+        _danmakuOpacity = settings.Current.DanmakuOpacity;
+        _danmakuScrollDuration = settings.Current.DanmakuScrollDuration;
+        _danmakuDisplayArea = settings.Current.DanmakuDisplayArea;
+        _danmakuServerUrl = settings.Current.DanmakuServerUrl ?? "";
         _initialized = true;
         RefreshMpvStatus();
     }
@@ -74,6 +99,28 @@ public partial class SettingsViewModel : ObservableObject
         _settings.Current.MpvPath = string.IsNullOrWhiteSpace(value) ? null : value;
         _settings.Save();
         RefreshMpvStatus();
+    }
+
+    partial void OnDanmakuEnabledChanged(bool value) => SaveDanmaku();
+    partial void OnDanmakuFontSizeChanged(int value) => SaveDanmaku();
+    partial void OnDanmakuOpacityChanged(double value) => SaveDanmaku();
+    partial void OnDanmakuScrollDurationChanged(int value) => SaveDanmaku();
+    partial void OnDanmakuDisplayAreaChanged(double value) => SaveDanmaku();
+    partial void OnDanmakuServerUrlChanged(string value) => SaveDanmaku();
+
+    private void SaveDanmaku()
+    {
+        if (!_initialized)
+        {
+            return;
+        }
+        _settings.Current.DanmakuEnabled = DanmakuEnabled;
+        _settings.Current.DanmakuFontSize = DanmakuFontSize;
+        _settings.Current.DanmakuOpacity = DanmakuOpacity;
+        _settings.Current.DanmakuScrollDuration = DanmakuScrollDuration;
+        _settings.Current.DanmakuDisplayArea = DanmakuDisplayArea;
+        _settings.Current.DanmakuServerUrl = string.IsNullOrWhiteSpace(DanmakuServerUrl) ? null : DanmakuServerUrl;
+        _settings.Save();
     }
 
     [RelayCommand]

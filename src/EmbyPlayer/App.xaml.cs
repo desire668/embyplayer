@@ -46,6 +46,7 @@ public partial class App : Application
         services.AddSingleton<MpvController>();
         services.AddSingleton<PlaybackSessionManager>();
         services.AddSingleton<PlaybackService>();
+        services.AddSingleton<DanmakuService>();
         services.AddSingleton<UpdateService>();
         services.AddTransient<LoginViewModel>();
         services.AddTransient<LibraryViewModel>();
