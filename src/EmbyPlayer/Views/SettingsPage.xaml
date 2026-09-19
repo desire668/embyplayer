@@ -20,6 +20,14 @@
                               IsOn="{x:Bind ViewModel.AutoPlayNext, Mode=TwoWay}" />
             </StackPanel>
 
+            <StackPanel Spacing="4">
+                <TextBlock Text="界面" FontSize="16" FontWeight="SemiBold" />
+                <ToggleSwitch Header="减弱动效"
+                              IsOn="{x:Bind ViewModel.ReduceMotion, Mode=TwoWay}" />
+                <TextBlock Opacity="0.6" FontSize="12" TextWrapping="Wrap"
+                           Text="开启后取消卡片浮起、海报视差、错峰入场与页面推入动画。系统「设置 → 辅助功能 → 视觉效果」里关闭动画效果时也会自动生效。" />
+            </StackPanel>
+
             <StackPanel Spacing="8">
                 <TextBlock Text="弹幕" FontSize="16" FontWeight="SemiBold" />
                 <ToggleSwitch Header="播放时加载弹幕"

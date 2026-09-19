@@ -22,6 +22,9 @@ public class AppSettings
     public bool AutoPlayNext { get; set; } = true;
     public string? DeviceId { get; set; }
 
+    /// <summary>减弱动效：关闭卡片浮起 / 视差 / 转场，只保留状态切换。</summary>
+    public bool ReduceMotion { get; set; }
+
     // 弹幕设置
     public bool DanmakuEnabled { get; set; } = false;
     public int DanmakuFontSize { get; set; } = 40;

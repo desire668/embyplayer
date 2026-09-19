@@ -8,6 +8,16 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
 
+            <!-- 影片墙：清掉 GridViewItem 自带的悬停 / 按下灰底，
+                 悬停反馈全部交给卡片自己的弹簧动效，避免两层反馈打架 -->
+            <SolidColorBrush x:Key="GridViewItemBackgroundPointerOver" Color="Transparent" />
+            <SolidColorBrush x:Key="GridViewItemBackgroundPressed" Color="Transparent" />
+            <SolidColorBrush x:Key="GridViewItemBackgroundSelected" Color="Transparent" />
+            <SolidColorBrush x:Key="GridViewItemBackgroundSelectedPointerOver" Color="Transparent" />
+            <SolidColorBrush x:Key="GridViewItemBackgroundSelectedPressed" Color="Transparent" />
+            <SolidColorBrush x:Key="GridViewItemBorderBrushPointerOver" Color="Transparent" />
+            <SolidColorBrush x:Key="GridViewItemFocusBorderBrush" Color="Transparent" />
+
             <!-- 窗口配色跟随主题：暗主题纯黑，亮主题默认；导航选中态保留品牌蓝 -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">

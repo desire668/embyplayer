@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EmbyPlayer.Models;
 using EmbyPlayer.Services;
+using Microsoft.UI.Xaml.Media;
 
 namespace EmbyPlayer.ViewModels;
 
@@ -56,6 +57,13 @@ public partial class DetailViewModel : ObservableObject
     [ObservableProperty]
     private bool _isFavorite;
 
+    /// <summary>
+    /// 详情页海报。与列表卡片共用 ImageCacheService 里的同一个 BitmapImage，
+    /// 所以从影片墙点进来时海报是「已经在内存里」的，不会再走一次网络与解码。
+    /// </summary>
+    [ObservableProperty]
+    private ImageSource? _posterSource;
+
     // 弹幕 UI 绑定
     [ObservableProperty]
     private bool _danmakuEnabled;
@@ -65,8 +73,6 @@ public partial class DetailViewModel : ObservableObject
 
     [ObservableProperty]
     private string _danmakuStatus = "";
-
-    public Uri? PosterUri { get; private set; }
 
     /// <summary>由页面订阅，弹出字幕选择对话框；用户确认后调用 ConfirmPlayAsync。</summary>
     public event Func<Task>? RequestSubtitleChoice;
@@ -146,6 +152,11 @@ public partial class DetailViewModel : ObservableObject
     {
         IsLoading = true;
         ErrorMessage = null;
+
+        // 先用列表里已经解析过的海报 URL 顶上：命中缓存的话这一帧就能显示，
+        // 不用等 GetItemAsync 回来，也不会出现「先空框、后蹦出图」。
+        PosterSource = ImageCacheService.Get(ItemCardMapper.TryGetPosterUrl(itemId));
+
         try
         {
             var item = await _api.GetItemAsync(itemId);
@@ -153,8 +164,10 @@ public partial class DetailViewModel : ObservableObject
             IsFavorite = item.UserData?.IsFavorite == true;
             var primaryTag = item.ImageTags is not null && item.ImageTags.TryGetValue("Primary", out var tag)
                 ? tag : null;
-            PosterUri = primaryTag is null ? null : new Uri(_api.GetPrimaryImageUrl(item.Id, primaryTag, 400));
-            OnPropertyChanged(nameof(PosterUri));
+            // 与列表走同一个宽度常量，保证 URL 一致 → 命中同一份缓存
+            PosterSource = primaryTag is null
+                ? null
+                : ImageCacheService.Get(_api.GetPrimaryImageUrl(item.Id, primaryTag));
             OnPropertyChanged(nameof(IsSeries));
             OnPropertyChanged(nameof(IsMovie));
             OnPropertyChanged(nameof(MetaText));

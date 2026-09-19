@@ -233,7 +233,10 @@ public sealed class EmbyApiClient : IDisposable
             ? PostAsync($"/Users/{UserId}/FavoriteItems/{itemId}", null, ct)
             : DeleteAsync($"/Users/{UserId}/FavoriteItems/{itemId}", ct);
 
-    public string GetPrimaryImageUrl(string itemId, string? imageTag, int maxWidth = 400)
+    /// <summary>海报请求宽度。列表与详情必须用同一个值，否则 URL 不同会绕过图片缓存。</summary>
+    public const int PosterWidth = 400;
+
+    public string GetPrimaryImageUrl(string itemId, string? imageTag, int maxWidth = PosterWidth)
     {
         var tag = string.IsNullOrEmpty(imageTag) ? "" : $"&tag={Uri.EscapeDataString(imageTag)}";
         return $"{ServerUrl}/Items/{itemId}/Images/Primary?maxWidth={maxWidth}{tag}&api_key={Token}";

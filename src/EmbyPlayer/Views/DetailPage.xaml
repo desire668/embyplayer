@@ -18,15 +18,16 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
-                    <Border Grid.Column="0" Width="220" Height="330" CornerRadius="8" Background="#FF2A2A2E">
-                        <Image Stretch="UniformToFill">
-                            <Image.Source>
-                                <BitmapImage UriSource="{x:Bind ViewModel.PosterUri, Mode=OneWay}" />
-                            </Image.Source>
-                        </Image>
+                    <!-- 共享元素动画的落点：与列表里的卡片海报是同一个 key -->
+                    <Border x:Name="DetailPoster" Grid.Column="0" Width="220" Height="330"
+                            CornerRadius="8" Background="#FF2A2A2E">
+                        <!-- 与影片墙卡片共用缓存中的同一张位图，进入详情不再重新加载 -->
+                        <Image x:Name="DetailPosterImage" Stretch="UniformToFill"
+                               Source="{x:Bind ViewModel.PosterSource, Mode=OneWay}"
+                               ImageOpened="DetailPoster_ImageOpened" />
                     </Border>
 
-                    <StackPanel Grid.Column="1" Spacing="12" VerticalAlignment="Top">
+                    <StackPanel x:Name="InfoPanel" Grid.Column="1" Spacing="12" VerticalAlignment="Top">
                         <TextBlock Text="{x:Bind ViewModel.Item.Name, Mode=OneWay}"
                                    FontSize="32" FontWeight="Bold" TextWrapping="Wrap" />
                         <TextBlock Text="{x:Bind ViewModel.MetaText, Mode=OneWay}" FontSize="14" Opacity="0.7" />
@@ -50,7 +51,8 @@
                     </StackPanel>
                 </Grid>
 
-                <StackPanel Spacing="12" Visibility="{x:Bind ViewModel.EpisodesVisibility, Mode=OneWay}">
+                <StackPanel x:Name="EpisodePanel" Spacing="12"
+                            Visibility="{x:Bind ViewModel.EpisodesVisibility, Mode=OneWay}">
                     <ComboBox Header="季" MinWidth="240" DisplayMemberPath="Name"
                               ItemsSource="{x:Bind ViewModel.Seasons, Mode=OneWay}"
                               SelectedItem="{x:Bind ViewModel.SelectedSeason, Mode=TwoWay}" />

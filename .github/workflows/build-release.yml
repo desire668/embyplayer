@@ -115,16 +115,20 @@ jobs:
           Write-Host "SC installer: $sc"
           Write-Host "FD installer: $fd"
 
-          # 取 tag 去掉 'v' 前缀后查找版本对应的 release notes
+          # 取 tag 去掉 'v' 前缀后查找版本对应的 release notes；
+          # 两种命名（1.0.4.md / v1.0.4.md）都兼容，避免历史文件命名不一致导致静默回退到默认文案
           $verPart = $tag -replace '^v', ''
-          $notesFile = ".github/release-notes/$verPart.md"
+          $notesFile = $null
+          foreach ($candidate in @(".github/release-notes/$verPart.md", ".github/release-notes/v$verPart.md")) {
+            if (Test-Path $candidate) { $notesFile = $candidate; break }
+          }
           $notes = ''
-          if (Test-Path $notesFile) {
+          if ($notesFile) {
             $notes = Get-Content $notesFile -Raw
             Write-Host "Loaded release notes from $notesFile"
           } else {
             $notes = "EmbyPlayer $tag - auto-built by GitHub Actions run #$env:GITHUB_RUN_NUMBER."
-            Write-Host "Release notes file not found at $notesFile, using default"
+            Write-Host "Release notes file not found for $verPart, using default"
           }
 
           # 若已存在则先删除（便于手动重跑覆盖）

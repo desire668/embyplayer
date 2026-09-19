@@ -1,3 +1,4 @@
+using EmbyPlayer.Animations;
 using EmbyPlayer.Services;
 using EmbyPlayer.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,12 +20,40 @@ public sealed partial class DetailPage : Page
         ViewModel.RequestSubtitleChoice += ShowSubtitleChoiceAsync;
     }
 
+    /// <summary>共享元素动画是否已接管海报（每帧只播一次）。</summary>
+    private bool _posterHandled;
+
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
+        _posterHandled = false;
+
         if (e.Parameter is string itemId)
         {
             _ = ViewModel.LoadAsync(itemId);
         }
+
+        // 文字区与剧集区错峰浮起，让视线先落在海报上
+        FluidItems.Reveal(InfoPanel, 0.06, 20f);
+        FluidItems.Reveal(EpisodePanel, 0.14, 20f);
+
+        // 没有海报图时不必等 ImageOpened，直接结束等待
+        if (ViewModel.PosterSource is null)
+        {
+            _posterHandled = true;
+            FluidNavigation.StartPoster(DetailPoster);
+        }
+    }
+
+    /// <summary>海报解码完成后再接共享元素动画，避免先闪一下空框。</summary>
+    private void DetailPoster_ImageOpened(object sender, RoutedEventArgs e)
+    {
+        if (_posterHandled)
+        {
+            return;
+        }
+
+        _posterHandled = true;
+        FluidNavigation.StartPoster(DetailPoster);
     }
 
     private async Task ShowSubtitleChoiceAsync()

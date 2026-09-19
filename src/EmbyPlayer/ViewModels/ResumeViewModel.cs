@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using EmbyPlayer.Animations;
 using CommunityToolkit.Mvvm.ComponentModel;
 using EmbyPlayer.Services;
 using EmbyPlayer.Views;
@@ -44,5 +45,5 @@ public partial class ResumeViewModel : ObservableObject
         }
     }
 
-    public void OpenItem(ItemCard card) => _navigation.NavigateTo<DetailPage>(card.Id);
+    public void OpenItem(ItemCard card) => _navigation.NavigateTo<DetailPage>(card.Id, FluidNavigation.PosterPush);
 }

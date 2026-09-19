@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using EmbyPlayer.Animations;
 using CommunityToolkit.Mvvm.ComponentModel;
 using EmbyPlayer.Services;
 using EmbyPlayer.Views;
@@ -108,6 +109,6 @@ public partial class SearchViewModel : ObservableObject
                 _api.Configure(server.Url, server.AccessToken, server.UserId);
             }
         }
-        _navigation.NavigateTo<DetailPage>(card.Id);
+        _navigation.NavigateTo<DetailPage>(card.Id, FluidNavigation.PosterPush);
     }
 }

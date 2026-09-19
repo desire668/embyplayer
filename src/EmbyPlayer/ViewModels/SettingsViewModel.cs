@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using EmbyPlayer.Animations;
 using EmbyPlayer.Services;
 using EmbyPlayer.Views;
 using Windows.System;
@@ -24,6 +25,9 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isCheckingUpdate;
+
+    [ObservableProperty]
+    private bool _reduceMotion;
 
     // 弹幕设置
     [ObservableProperty]
@@ -60,6 +64,8 @@ public partial class SettingsViewModel : ObservableObject
         _danmakuScrollDuration = settings.Current.DanmakuScrollDuration;
         _danmakuDisplayArea = settings.Current.DanmakuDisplayArea;
         _danmakuServerUrl = settings.Current.DanmakuServerUrl ?? "";
+        _reduceMotion = settings.Current.ReduceMotion;
+        FluidMotion.ReduceMotion = _reduceMotion;
         _initialized = true;
         RefreshMpvStatus();
     }
@@ -99,6 +105,17 @@ public partial class SettingsViewModel : ObservableObject
         _settings.Current.MpvPath = string.IsNullOrWhiteSpace(value) ? null : value;
         _settings.Save();
         RefreshMpvStatus();
+    }
+
+    partial void OnReduceMotionChanged(bool value)
+    {
+        FluidMotion.ReduceMotion = value;
+        if (!_initialized)
+        {
+            return;
+        }
+        _settings.Current.ReduceMotion = value;
+        _settings.Save();
     }
 
     partial void OnDanmakuEnabledChanged(bool value) => SaveDanmaku();

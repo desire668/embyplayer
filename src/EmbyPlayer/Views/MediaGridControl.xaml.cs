@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using EmbyPlayer.Animations;
 using EmbyPlayer.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -46,9 +47,15 @@ public sealed partial class MediaGridControl : UserControl
 
     private void Grid_ItemClick(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is ItemCard card)
+        if (e.ClickedItem is not ItemCard card)
         {
-            ItemChosen?.Invoke(card);
+            return;
         }
+
+        // 海报作为共享元素飞入详情页
+        var poster = FluidNavigation.FindDescendant<PosterCard>(ItemsGrid.ContainerFromItem(card));
+        FluidNavigation.PreparePoster(poster?.PosterElement);
+
+        ItemChosen?.Invoke(card);
     }
 }

@@ -1,3 +1,4 @@
+using EmbyPlayer.Animations;
 using EmbyPlayer.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
@@ -18,10 +19,19 @@ public sealed partial class LibraryPage : Page
 
     private void ItemsGrid_ItemClick(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is ItemCard card)
+        if (e.ClickedItem is not ItemCard card)
         {
-            ViewModel.OpenItem(card);
+            return;
         }
+
+        // 点击的海报作为共享元素飞入详情页：先把源元素登记，再导航
+        if (sender is GridView grid)
+        {
+            var poster = FluidNavigation.FindDescendant<PosterCard>(grid.ContainerFromItem(card));
+            FluidNavigation.PreparePoster(poster?.PosterElement);
+        }
+
+        ViewModel.OpenItem(card);
     }
 
     private void ShowAllViews_Click(object sender, RoutedEventArgs e)

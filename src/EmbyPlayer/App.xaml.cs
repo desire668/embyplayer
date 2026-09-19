@@ -1,3 +1,4 @@
+using EmbyPlayer.Animations;
 using EmbyPlayer.Services;
 using EmbyPlayer.ViewModels;
 using EmbyPlayer.Views;
@@ -56,6 +57,9 @@ public partial class App : Application
         services.AddTransient<ResumeViewModel>();
         services.AddTransient<FavoritesViewModel>();
         Services = services.BuildServiceProvider();
+
+        // 动效开关要在任何界面创建之前生效，否则首屏会先动一下再关掉
+        FluidMotion.ReduceMotion = Services.GetRequiredService<SettingsService>().Current.ReduceMotion;
 
         _window = new MainWindow();
         _window.Activate();

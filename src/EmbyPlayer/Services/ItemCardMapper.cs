@@ -1,9 +1,19 @@
+using System.Collections.Generic;
 using EmbyPlayer.Models;
 
 namespace EmbyPlayer.Services;
 
 public static class ItemCardMapper
 {
+    /// <summary>
+    /// itemId → 海报 URL。列表加载时顺手记下，详情页就能在发起 GetItemAsync 之前
+    /// 先把海报显示出来（用的是缓存里那张已经解码好的位图），不必等元数据回来。
+    /// </summary>
+    private static readonly Dictionary<string, string> PosterUrlByItemId = new();
+
+    public static string? TryGetPosterUrl(string itemId) =>
+        PosterUrlByItemId.TryGetValue(itemId, out var url) ? url : null;
+
     public static ViewModels.ItemCard ToCard(EmbyApiClient api, BaseItemDto item, string? serverId = null)
     {
         double resumePercent = 0;
@@ -14,6 +24,14 @@ public static class ItemCardMapper
         }
         var primaryTag = item.ImageTags is not null && item.ImageTags.TryGetValue("Primary", out var tag)
             ? tag : null;
+
+        string? posterUrl = null;
+        if (primaryTag is not null)
+        {
+            posterUrl = api.GetPrimaryImageUrl(item.Id, primaryTag);
+            PosterUrlByItemId[item.Id] = posterUrl;
+        }
+
         return new ViewModels.ItemCard
         {
             Id = item.Id,
@@ -21,7 +39,7 @@ public static class ItemCardMapper
             Type = item.Type,
             ServerId = serverId,
             Year = item.ProductionYear?.ToString(),
-            ImageUri = primaryTag is null ? null : new Uri(api.GetPrimaryImageUrl(item.Id, primaryTag)),
+            ImageUri = posterUrl is null ? null : new System.Uri(posterUrl),
             Watched = item.UserData?.Played == true,
             ResumePercent = resumePercent
         };

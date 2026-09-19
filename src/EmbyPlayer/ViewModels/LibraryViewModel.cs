@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using EmbyPlayer.Animations;
 using EmbyPlayer.Models;
 using EmbyPlayer.Services;
 using EmbyPlayer.Views;
@@ -114,6 +115,40 @@ public partial class LibraryViewModel : ObservableObject
         }
     }
 
+    // 防抖 + 请求取消：切分类会连带改排序字段和升降序，三个属性变更各触发一次加载的话，
+    // 列表会被整体替换三遍、GridView 重建三遍 —— 那正是「整页闪几下」的来源。
+    private CancellationTokenSource? _reloadDelayCts;
+    private CancellationTokenSource? _loadCts;
+
+    /// <summary>合并连发的重载请求，120ms 内的多次变更只发一次网络请求。</summary>
+    private void RequestReload()
+    {
+        _reloadDelayCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _reloadDelayCts = cts;
+        IsLoading = true;
+        _ = ReloadDebouncedAsync(cts);
+    }
+
+    private async Task ReloadDebouncedAsync(CancellationTokenSource cts)
+    {
+        try
+        {
+            await Task.Delay(120, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return; // 已被后续请求合并
+        }
+
+        if (!ReferenceEquals(_reloadDelayCts, cts))
+        {
+            return;
+        }
+
+        await LoadItemsAsync(cts.Token);
+    }
+
     partial void OnSelectedViewChanged(ViewInfo? value)
     {
         if (value is null) return;
@@ -126,14 +161,14 @@ public partial class LibraryViewModel : ObservableObject
         SelectedSortBy = options[0];
         SortAscending = true;
 
-        _ = LoadItemsAsync();
+        RequestReload();
     }
 
     partial void OnSelectedSortByChanged(SortOption? value)
     {
         if (SelectedView is not null && value is not null)
         {
-            _ = LoadItemsAsync();
+            RequestReload();
         }
     }
 
@@ -142,11 +177,11 @@ public partial class LibraryViewModel : ObservableObject
         OnPropertyChanged(nameof(SortOrderDisplay));
         if (SelectedView is not null && SelectedSortBy is not null)
         {
-            _ = LoadItemsAsync();
+            RequestReload();
         }
     }
 
-    private async Task LoadItemsAsync()
+    private async Task LoadItemsAsync(CancellationToken ct)
     {
         var view = SelectedView;
         if (view is null) return;
@@ -156,6 +191,12 @@ public partial class LibraryViewModel : ObservableObject
 
         ErrorMessage = null;
         IsLoading = true;
+
+        // 取消仍在飞行的上一次请求，避免两个响应先后覆盖 Items
+        _loadCts?.Cancel();
+        var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _loadCts = linked;
+
         try
         {
             var types = view.CollectionType switch
@@ -168,18 +209,33 @@ public partial class LibraryViewModel : ObservableObject
                 _ => "Movie,Series"
             };
             var result = await _api.GetItemsAsync(view.Id, types,
-                sortBy: sortBy, sortOrder: sortOrder);
+                sortBy: sortBy, sortOrder: sortOrder, ct: linked.Token);
+            if (linked.IsCancellationRequested)
+            {
+                return;
+            }
+
             Items = new ObservableCollection<ItemCard>(result.Items.Select(i => ItemCardMapper.ToCard(_api, i)));
+        }
+        catch (OperationCanceledException)
+        {
+            return;
         }
         catch (Exception ex)
         {
-            ErrorMessage = ex.Message;
+            if (!linked.IsCancellationRequested)
+            {
+                ErrorMessage = ex.Message;
+            }
         }
         finally
         {
-            IsLoading = false;
+            if (!linked.IsCancellationRequested)
+            {
+                IsLoading = false;
+            }
         }
     }
 
-    public void OpenItem(ItemCard card) => _navigation.NavigateTo<DetailPage>(card.Id);
+    public void OpenItem(ItemCard card) => _navigation.NavigateTo<DetailPage>(card.Id, FluidNavigation.PosterPush);
 }
