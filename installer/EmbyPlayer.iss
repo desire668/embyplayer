@@ -51,6 +51,13 @@ PrivilegesRequired=lowest
 DisableProgramGroupPage=yes
 DisableDirPage=no
 AllowCancelDuringInstall=yes
+; 自动更新（/VERYSILENT 静默覆盖安装）依赖以下设置：
+;   沿用上次的安装目录与任务，避免静默安装时因缺少向导页而装到别处
+UsePreviousAppDir=yes
+UsePreviousTasks=yes
+UsePreviousLanguage=yes
+; 自动关闭占用待覆盖文件的进程（配合 /CLOSEAPPLICATIONS）
+CloseApplications=yes
 
 [Languages]
 Name: "chinesesimp"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
@@ -70,6 +77,8 @@ Name: "{userdesktop}\EmbyPlayer"; Filename: "{app}\EmbyPlayer.exe"; IconFilename
 
 [Run]
 Filename: "{app}\EmbyPlayer.exe"; Description: "启动 EmbyPlayer"; Flags: nowait postinstall skipifsilent
+; 静默更新模式下上面那条会被 skipifsilent 跳过，此条负责安装完成后自动重启应用
+Filename: "{app}\EmbyPlayer.exe"; Flags: nowait; Check: IsSilentInstall
 
 [UninstallDelete]
 ; 清理崩溃日志
@@ -78,6 +87,12 @@ Type: files; Name: "{tmp}\EmbyPlayer.crash.log"
 Type: dirifempty; Name: "{app}\Logs"
 
 [Code]
+// 静默模式（/SILENT 或 /VERYSILENT）返回 True，用于区分「自动更新」与「交互式安装」
+function IsSilentInstall: Boolean;
+begin
+  Result := WizardSilent();
+end;
+
 #ifdef FD
 // 检测 .NET 9 Desktop Runtime 是否已安装（系统级 + 用户级两处）
 function IsDotNet9DesktopInstalled: Boolean;

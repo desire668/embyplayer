@@ -130,6 +130,34 @@ public partial class App : Application
         }
     }
 
+    /// <summary>
+    /// 覆盖安装前退出程序：保存设置、停掉 mpv 子进程释放文件占用，然后立即结束进程。
+    /// 必须用 Environment.Exit —— WinUI3 的 Application.Exit 不保证进程立刻退出，
+    /// 进程残留会导致安装包无法覆盖 EmbyPlayer.exe 等文件。
+    /// </summary>
+    public static void ExitForUpdate()
+    {
+        try
+        {
+            Services.GetService<SettingsService>()?.Save();
+        }
+        catch (Exception ex)
+        {
+            WriteCrashLog($"更新退出前保存设置失败：{ex}");
+        }
+
+        try
+        {
+            Services.GetService<MpvController>()?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            WriteCrashLog($"更新退出前停止 mpv 失败：{ex}");
+        }
+
+        Environment.Exit(0);
+    }
+
     private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
     {
         e.Handled = true;

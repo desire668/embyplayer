@@ -9,6 +9,7 @@ WinUI3 桌面客户端，用于浏览与播放 Emby 媒体服务器的内容，�
 - 聚合搜索：跨所有已登录 Emby 服务器同时检索
 - 内置 mpv 播放器（已汉化右键菜单、字体、配置）
 - 头像 / 服务器名 / 标题栏图标显示
+- 内置自动更新：检测到新版本后可一键下载安装包并静默覆盖安装
 - 崩溃日志记录到 `%TEMP%\EmbyPlayer.crash.log`
 
 ## 安装
@@ -21,6 +22,17 @@ WinUI3 桌面客户端，用于浏览与播放 Emby 媒体服务器的内容，�
 | `EmbyPlayer-Setup-x64-FD-x.y.z.exe` | **精简版**，需自行安装 [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0)（约 50 MB） |
 
 仅支持 Windows 10 1809 (17763) 及以上 x64 系统。
+
+### 自动更新
+
+启动时静默检查 GitHub 最新 Release，设置页「关于 → 检查更新」也可手动触发。发现新版本时：
+
+1. 弹窗展示版本号与 Release notes，按钮为「立即更新」；
+2. 按当前安装形态自动挑选 SC / FD 安装包（依据程序目录是否自带 `coreclr.dll` 判断），下载到 `%TEMP%\EmbyPlayer\Updates`，弹窗内显示进度；
+3. 下载完成后以 `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS` 启动安装包，沿用上次的安装目录与任务做覆盖安装；
+4. 安装结束由安装包重新启动应用（安装日志：`%TEMP%\EmbyPlayer\Updates\install.log`）。
+
+安装在 Program Files 等受保护目录时会自动请求管理员授权（UAC）；Release 中没有匹配安装包时，「立即更新」退化为「前往下载」打开 Release 页面。
 
 ## 从源码构建
 

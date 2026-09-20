@@ -205,6 +205,7 @@ public sealed partial class MainWindow : Window
     /// <summary>
     /// 显示更新对话框。传入非空 update 则提示新版本，传入 null 行为取决于 isAutoCheck：
     /// 自动检查（启动时）静默不弹窗；手动检查（设置页）提示「已是最新版本」。
+    /// 有新版本且 Release 附带安装包时，Primary 按钮为「立即更新」：下载后静默覆盖安装。
     /// </summary>
     public async Task ShowUpdateDialogAsync(UpdateInfo? update, bool isAutoCheck = false)
     {
@@ -242,6 +243,8 @@ public sealed partial class MainWindow : Window
             else
             {
                 dialog.Title = $"发现新版本 {update.LatestTag}";
+                dialog.PrimaryButtonText = update.HasInstaller ? "立即更新" : "前往下载";
+                dialog.SecondaryButtonText = "暂不更新";
 
                 // 内容：版本提示 + Release notes（Markdown 原文，纯文本展示）
                 var notes = string.IsNullOrEmpty(update.ReleaseNotes)
@@ -259,6 +262,21 @@ public sealed partial class MainWindow : Window
                     Opacity = 0.7,
                     TextWrapping = TextWrapping.Wrap
                 });
+
+                if (update.HasInstaller)
+                {
+                    var sizeText = update.InstallerSize > 0
+                        ? $"安装包：{update.InstallerAssetName}（{DownloadProgress.FormatBytes(update.InstallerSize)}）"
+                        : $"安装包：{update.InstallerAssetName}";
+                    contentPanel.Children.Add(new TextBlock
+                    {
+                        Text = $"{sizeText}，点「立即更新」将自动下载并覆盖安装，完成后重新启动。",
+                        Opacity = 0.7,
+                        FontSize = 12,
+                        TextWrapping = TextWrapping.Wrap
+                    });
+                }
+
                 contentPanel.Children.Add(new ScrollViewer
                 {
                     Content = new TextBlock
@@ -271,11 +289,41 @@ public sealed partial class MainWindow : Window
                     Padding = new Thickness(0)
                 });
 
+                // 下载进度区（默认隐藏，点「立即更新」后显示）
+                var statusText = new TextBlock
+                {
+                    Visibility = Visibility.Collapsed,
+                    TextWrapping = TextWrapping.Wrap,
+                    Opacity = 0.85,
+                    FontSize = 13
+                };
+                var progressBar = new ProgressBar
+                {
+                    Visibility = Visibility.Collapsed,
+                    Minimum = 0,
+                    Maximum = 100,
+                    Value = 0
+                };
+                contentPanel.Children.Add(statusText);
+                contentPanel.Children.Add(progressBar);
+
+                if (update.HasInstaller)
+                {
+                    var updateService = App.Services.GetRequiredService<UpdateService>();
+                    dialog.PrimaryButtonClick += (sender, args) =>
+                    {
+                        // 保持对话框打开，下载进度直接显示在弹窗里
+                        var deferral = args.GetDeferral();
+                        args.Cancel = true;
+                        _ = RunAutoUpdateAsync(update, updateService, dialog, statusText, progressBar, deferral);
+                    };
+                }
+
                 dialog.Content = contentPanel;
             }
 
             var result = await dialog.ShowAsync();
-            if (result == ContentDialogResult.Primary && update is not null && !string.IsNullOrEmpty(update.ReleaseUrl))
+            if (result == ContentDialogResult.Primary && update is not null && !update.HasInstaller && !string.IsNullOrEmpty(update.ReleaseUrl))
             {
                 await Launcher.LaunchUriAsync(new Uri(update.ReleaseUrl));
             }
@@ -284,6 +332,73 @@ public sealed partial class MainWindow : Window
         {
             // XamlRoot 未就绪 / 弹窗竞态等：写崩溃日志但不影响用户使用
             App.WriteCrashLog($"显示更新对话框失败：{ex}");
+        }
+    }
+
+    /// <summary>
+    /// 「立即更新」流程：下载安装包 → 静默启动安装 → 关闭本程序（安装完成后由安装包重新启动）。
+    /// 失败时在弹窗内显示原因并恢复按钮，用户可重试或前往 Release 页面手动下载。
+    /// </summary>
+    private static async Task RunAutoUpdateAsync(
+        UpdateInfo update,
+        UpdateService updateService,
+        ContentDialog dialog,
+        TextBlock statusText,
+        ProgressBar progressBar,
+        ContentDialogButtonClickDeferral deferral)
+    {
+        try
+        {
+            dialog.IsPrimaryButtonEnabled = false;
+            dialog.IsSecondaryButtonEnabled = false;
+            statusText.Visibility = Visibility.Visible;
+            progressBar.Visibility = Visibility.Visible;
+            progressBar.ShowError = false;
+            progressBar.Value = 0;
+
+            var progress = new Progress<DownloadProgress>(p =>
+            {
+                if (p.TotalBytes is > 0)
+                {
+                    progressBar.IsIndeterminate = false;
+                    progressBar.Value = p.Ratio * 100;
+                    statusText.Text = $"正在下载安装包… {p.ReceivedText} / {p.TotalText}";
+                }
+                else
+                {
+                    progressBar.IsIndeterminate = true;
+                    statusText.Text = $"正在下载安装包… {p.ReceivedText}";
+                }
+            });
+
+            statusText.Text = "正在下载安装包…";
+            var installerPath = await updateService.DownloadInstallerAsync(update, progress);
+
+            statusText.Text = "下载完成，正在启动安装程序…（本程序即将关闭，安装完成后自动重启）";
+            progressBar.IsIndeterminate = true;
+            await Task.Delay(400);
+
+            if (UpdateService.LaunchInstaller(installerPath))
+            {
+                // 退出自身：WinUI3 的 Application.Exit 不能保证进程立即结束，直接用 Environment.Exit
+                App.ExitForUpdate();
+                return;
+            }
+
+            throw new InvalidOperationException("无法启动安装程序（可能已取消管理员授权，或被安全软件拦截）。");
+        }
+        catch (Exception ex)
+        {
+            App.WriteCrashLog($"自动更新失败：{ex}");
+            progressBar.IsIndeterminate = false;
+            progressBar.ShowError = true;
+            statusText.Text = $"更新失败：{ex.Message}\n你也可以前往 Release 页面手动下载安装。";
+            dialog.IsPrimaryButtonEnabled = true;
+            dialog.IsSecondaryButtonEnabled = true;
+        }
+        finally
+        {
+            deferral.Complete();
         }
     }
 }
