@@ -53,8 +53,8 @@
             <StackPanel Grid.Row="1" Margin="2,8,2,0" Spacing="4">
                 <TextBlock Text="{x:Bind Card.Name, Mode=OneWay}" FontSize="14" FontWeight="SemiBold"
                            MaxLines="2" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
-                <TextBlock Text="{x:Bind Card.Year, Mode=OneWay}" FontSize="12" Opacity="0.6"
-                           Visibility="{x:Bind Card.YearVisibility, Mode=OneWay}" />
+                <TextBlock Text="{x:Bind Card.SubtitleOrYear, Mode=OneWay}" FontSize="12" Opacity="0.6"
+                           Visibility="{x:Bind Card.SubtitleOrYearVisibility, Mode=OneWay}" />
                 <ProgressBar Minimum="0" Maximum="100" Value="{x:Bind Card.ResumePercent, Mode=OneWay}"
                              Visibility="{x:Bind Card.ResumeVisibility, Mode=OneWay}" />
             </StackPanel>

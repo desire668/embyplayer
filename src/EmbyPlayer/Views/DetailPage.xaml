@@ -5,7 +5,7 @@
     xmlns:models="using:EmbyPlayer.Models">
 
     <Grid>
-        <ScrollViewer>
+        <ScrollViewer x:Name="RootScroll" ViewChanged="RootScroll_ViewChanged">
             <StackPanel Padding="24" Spacing="16" MaxWidth="1000" HorizontalAlignment="Left">
 
                 <Button Click="BackButton_Click" ToolTipService.ToolTip="返回">
@@ -52,7 +52,8 @@
                 </Grid>
 
                 <StackPanel x:Name="EpisodePanel" Spacing="12"
-                            Visibility="{x:Bind ViewModel.EpisodesVisibility, Mode=OneWay}">
+                            Visibility="{x:Bind ViewModel.EpisodesVisibility, Mode=OneWay}"
+                            SizeChanged="EpisodePanel_SizeChanged">
                     <ComboBox Header="季" MinWidth="240" DisplayMemberPath="Name"
                               ItemsSource="{x:Bind ViewModel.Seasons, Mode=OneWay}"
                               SelectedItem="{x:Bind ViewModel.SelectedSeason, Mode=TwoWay}" />
@@ -85,6 +86,21 @@
 
         <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+        <!-- 集列表很长时的快捷跳转：没到底显示「到底部」，到底后变成「回顶部」 -->
+        <Button x:Name="JumpButton"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                Margin="0,0,32,24" Height="40" MinWidth="118" CornerRadius="20"
+                ToolTipService.ToolTip="直达底部"
+                Visibility="Collapsed"
+                Click="JumpButton_Click">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <!-- ChevronDown / ChevronUp（Segoe Fluent Icons 字形） -->
+                <FontIcon x:Name="JumpIcon" Glyph="&#xE70E;" FontSize="14"
+                          FontFamily="Segoe Fluent Icons" />
+                <TextBlock x:Name="JumpLabel" Text="到底部" VerticalAlignment="Center" />
+            </StackPanel>
+        </Button>
 
         <ContentDialog x:Name="SubtitleDialog" Title="选择字幕"
                        PrimaryButtonText="播放" SecondaryButtonText="取消" DefaultButton="Primary">

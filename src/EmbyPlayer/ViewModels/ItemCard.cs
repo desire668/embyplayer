@@ -34,9 +34,16 @@ public sealed class ItemCard
     public string? ServerId { get; set; }
 
     public string? Year { get; set; }
+
+    /// <summary>卡片副标题（如剧集卡片的 "S01E05"）。为空时副标题回退显示年份。</summary>
+    public string? Subtitle { get; set; }
+
     public Uri? ImageUri { get; set; }
     public bool Watched { get; set; }
     public double ResumePercent { get; set; }
+
+    /// <summary>副标题行实际显示的文本：优先 Subtitle，其次 Year。</summary>
+    public string SubtitleOrYear => !string.IsNullOrEmpty(Subtitle) ? Subtitle! : Year ?? "";
 
     public string Initial => string.IsNullOrEmpty(Name) ? "?" : Name[..1].ToUpperInvariant();
     public bool HasImage => ImageUri is not null;
@@ -50,4 +57,6 @@ public sealed class ItemCard
         ShowResume ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility YearVisibility =>
         string.IsNullOrEmpty(Year) ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
+    public Microsoft.UI.Xaml.Visibility SubtitleOrYearVisibility =>
+        string.IsNullOrEmpty(SubtitleOrYear) ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
 }

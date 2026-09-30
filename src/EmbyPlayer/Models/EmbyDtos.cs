@@ -29,9 +29,15 @@ public class BaseItemDto
     public string? Overview { get; set; }
     public int? ProductionYear { get; set; }
     public int? IndexNumber { get; set; }
+
+    /// <summary>季号（Episode 的 ParentIndexNumber，即第几季）。</summary>
+    public int? ParentIndexNumber { get; set; }
     public string? ParentId { get; set; }
     public string? SeriesId { get; set; }
     public string? SeriesName { get; set; }
+
+    /// <summary>所属剧集主图的 image tag，用于在不额外请求的情况下拼出剧集海报 URL。</summary>
+    public string? SeriesPrimaryImageTag { get; set; }
     public string? SeasonId { get; set; }
     public string? SeasonName { get; set; }
     public long? RunTimeTicks { get; set; }

@@ -18,3 +18,6 @@ publish/
 crash.log
 .cache/
 .trae/
+
+# WorkBuddy agent data (memory / build scratch)
+.workbuddy/

@@ -20,6 +20,9 @@ public partial class DetailViewModel : ObservableObject
 
     private PlaybackPlan? _plan;
 
+    /// <summary>剧集详情页的续播目标（来自「最近播放」列表记录的那一集）。</summary>
+    private ResumeEpisode? _resumeEpisode;
+
     // 弹幕源：手动选择的 XML 文件（优先），或从弹幕服务器自动获取的结果
     private string? _danmakuXmlPath;
     private List<DanmakuEntry>? _autoFetchedDanmaku;
@@ -128,6 +131,11 @@ public partial class DetailViewModel : ObservableObject
     {
         get
         {
+            // 从「最近播放」进来时，剧集详情页直接续播上次那一集
+            if (_resumeEpisode is { } resume)
+            {
+                return string.IsNullOrWhiteSpace(resume.Label) ? "继续播放" : $"继续播放 {resume.Label}";
+            }
             var ticks = Item?.UserData?.PlaybackPositionTicks ?? 0;
             return ticks > 0 ? $"继续播放（{FormatDuration(ticks)}）" : "播放";
         }
@@ -176,6 +184,7 @@ public partial class DetailViewModel : ObservableObject
 
             if (item.Type == "Series")
             {
+                _resumeEpisode = ItemCardMapper.TryGetResumeEpisode(item.Id);
                 var seasons = await _api.GetSeasonsAsync(item.Id);
                 Seasons = new ObservableCollection<BaseItemDto>(seasons.Items);
                 SelectedSeason = Seasons.FirstOrDefault();
@@ -228,14 +237,35 @@ public partial class DetailViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private Task PlayAsync()
+    private async Task PlayAsync()
     {
         if (Item is null)
         {
-            return Task.CompletedTask;
+            return;
         }
-        var target = IsSeries ? Episodes.FirstOrDefault() ?? Item : Item;
-        return PreparePlaybackAsync(target);
+
+        if (!IsSeries)
+        {
+            await PreparePlaybackAsync(Item);
+            return;
+        }
+
+        // 有续播记录时直接播上次那一集（其 UserData 带断点位置，mpv 会从断点开始）
+        if (_resumeEpisode is { } resume)
+        {
+            try
+            {
+                await PreparePlaybackAsync(await _api.GetItemAsync(resume.EpisodeId));
+                return;
+            }
+            catch (Exception ex)
+            {
+                ErrorMessage = ex.Message;
+                return;
+            }
+        }
+
+        await PreparePlaybackAsync(Episodes.FirstOrDefault() ?? Item);
     }
 
     [RelayCommand]
