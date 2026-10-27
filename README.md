@@ -1,6 +1,7 @@
 # EmbyPlayer
 
 WinUI3 桌面客户端，用于浏览与播放 Emby 媒体服务器的内容，内置 mpv 播放器（中文右键菜单）。
+https://github.com/desire668/embyplayer/row/main/window.png
 
 ## 功能特性
 
