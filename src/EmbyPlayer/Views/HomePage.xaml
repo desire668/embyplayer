@@ -52,8 +52,10 @@
         <ScrollViewer Background="Transparent">
             <StackPanel>
 
-                <!-- 有错误时（如未填 TMDB Key、网络失败）在页面顶部提示，空态也看得到 -->
+                <!-- 有错误时（如未填 TMDB Key、网络失败）在页面顶部提示，空态也看得到；
+                     没有错误时整块 Collapsed，不会因为空文字的边距在顶部留出一条空白 -->
                 <TextBlock Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                           Visibility="{x:Bind ViewModel.ErrorMessageVisibility, Mode=OneWay}"
                            Foreground="#FFFF6B6B" FontSize="13" TextWrapping="Wrap"
                            MaxWidth="560" HorizontalAlignment="Left" Margin="44,16,44,0" />
 
@@ -99,10 +101,6 @@
                           Background="Transparent" Tapped="HeroPrev_Tapped" />
                     <Grid Width="130" HorizontalAlignment="Right" VerticalAlignment="Stretch"
                           Background="Transparent" Tapped="HeroNext_Tapped" />
-
-                    <!-- 顶部页面标题 -->
-                    <TextBlock Text="我的首页" FontSize="15" FontWeight="SemiBold"
-                               Foreground="#E6FFFFFF" Margin="20,10,0,0" HorizontalAlignment="Left" />
 
                     <!-- 左下：推荐影片信息 -->
                     <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Left"

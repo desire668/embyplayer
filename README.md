@@ -4,6 +4,7 @@ WinUI3 桌面客户端，用于浏览与播放 Emby 媒体服务器的内容，�
 
 ![图片描述](./window.png)
 ![图片描述](./Full%20screen.png)
+
 ## 功能特性
 
 - 多服务器管理（添加 / 切换 / 公共信息探测）
@@ -20,7 +21,7 @@ WinUI3 桌面客户端，用于浏览与播放 Emby 媒体服务器的内容，�
 前往 [Releases](https://github.com/desire668/embyplayer/releases) 下载对应版本：
 
 | 文件名 | 说明 |
-|------|------|
+| --- | --- |
 | `EmbyPlayer-Setup-x64-SC-x.y.z.exe` | **自带 .NET 9 运行时**，开箱即用（约 150 MB） |
 | `EmbyPlayer-Setup-x64-FD-x.y.z.exe` | **精简版**，需自行安装 [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0)（约 50 MB） |
 
@@ -41,7 +42,7 @@ WinUI3 桌面客户端，用于浏览与播放 Emby 媒体服务器的内容，�
 
 ### CI 自动构建（推荐）
 
-推送 `v*` 形式的 tag（如 `git tag v1.0.0 && git push origin v1.0.0`）即可触发 GitHub Actions：
+推送 `v*` 形式的 tag（如 `git tag v1.0.0 && git push origin v1.0.0`）即可触发 GitHub Actions：  
 自动安装 .NET 9 SDK + Inno Setup 6、构建 SC / FD 两个安装包，并发布对应版本的 Release。
 
 也可在 GitHub 仓库 **Actions** 页手动触发 `Build and Release` workflow（仅构建 artifact，默认不发 Release）。

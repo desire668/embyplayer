@@ -143,6 +143,13 @@ public partial class HomeViewModel : ObservableObject
     public Visibility ShowAllLatestVisibility =>
         !IsTmdbSource && LatestItems.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
+    /// <summary>错误提示：没有错误时整块 Collapsed，避免空 TextBlock 的上下留白把大图顶下去。</summary>
+    public Visibility ErrorMessageVisibility =>
+        string.IsNullOrWhiteSpace(ErrorMessage) ? Visibility.Collapsed : Visibility.Visible;
+
+    partial void OnErrorMessageChanged(string? value) =>
+        OnPropertyChanged(nameof(ErrorMessageVisibility));
+
     partial void OnHeroIndexChanged(int value)
     {
         OnPropertyChanged(nameof(CurrentHero));
