@@ -48,24 +48,18 @@
     </Page.Resources>
 
     <Grid>
-        <!-- ============ 未连接服务器且无推荐内容：居中欢迎引导 ============ -->
-        <StackPanel Visibility="{x:Bind ViewModel.WelcomePanelVisibility, Mode=OneWay}"
-                    HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" MaxWidth="440">
-            <TextBlock Text="EmbyPlayer" FontSize="40" FontWeight="Bold" HorizontalAlignment="Center" />
-            <TextBlock Text="连接你的 Emby 服务器，海报墙即刻呈现" Opacity="0.7"
-                       HorizontalAlignment="Center" TextAlignment="Center" FontSize="15" />
-            <Button Content="＋  连接服务器" HorizontalAlignment="Center" Margin="0,16,0,0"
-                    FontSize="16" Padding="24,10"
-                    Style="{StaticResource AccentButtonStyle}"
-                    Command="{x:Bind ViewModel.GoConnectServerCommand, Mode=OneWay}" />
-        </StackPanel>
-
         <!-- ============ 海报墙首页（TMDB 推荐，未登录也可浏览） ============ -->
         <ScrollViewer Background="Transparent">
             <StackPanel>
 
-                <!-- 大图轮播 -->
-                <Grid Height="440">
+                <!-- 有错误时（如未填 TMDB Key、网络失败）在页面顶部提示，空态也看得到 -->
+                <TextBlock Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                           Foreground="#FFFF6B6B" FontSize="13" TextWrapping="Wrap"
+                           MaxWidth="560" HorizontalAlignment="Left" Margin="44,16,44,0" />
+
+                <!-- 大图轮播：没有内容时整块隐藏，否则空的「播放/详情」按钮会浮在欢迎面板上 -->
+                <Grid Height="440"
+                      Visibility="{x:Bind ViewModel.HeroVisibility, Mode=OneWay}">
                     <!-- 兜底底色：无背景图时也有沉稳的深色衬底 -->
                     <Rectangle>
                         <Rectangle.Fill>
@@ -109,14 +103,6 @@
                     <!-- 顶部页面标题 -->
                     <TextBlock Text="我的首页" FontSize="15" FontWeight="SemiBold"
                                Foreground="#E6FFFFFF" Margin="20,10,0,0" HorizontalAlignment="Left" />
-
-                    <!-- 未连接服务器：右上角常驻连接入口 -->
-                    <Button Content="连接 Emby 服务器" FontSize="12" Padding="12,5"
-                            Background="#66000000" Foreground="White"
-                            BorderBrush="#55FFFFFF" BorderThickness="1" CornerRadius="14"
-                            HorizontalAlignment="Right" Margin="0,8,20,0"
-                            Visibility="{x:Bind ViewModel.LoggedOutVisibility, Mode=OneWay}"
-                            Command="{x:Bind ViewModel.GoConnectServerCommand, Mode=OneWay}" />
 
                     <!-- 左下：推荐影片信息 -->
                     <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Left"
@@ -199,9 +185,6 @@
                                Visibility="{x:Bind ViewModel.NoHeroVisibility, Mode=OneWay}"
                                Foreground="#B3FFFFFF" FontSize="14"
                                Margin="44,0,44,36" VerticalAlignment="Bottom" HorizontalAlignment="Left" />
-                    <TextBlock Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
-                               Foreground="#FFFF6B6B" FontSize="13" TextWrapping="Wrap" MaxWidth="420"
-                               Margin="44,0,44,76" VerticalAlignment="Bottom" HorizontalAlignment="Left" />
                 </Grid>
 
                 <!-- 继续播放 -->
@@ -264,5 +247,29 @@
 
             </StackPanel>
         </ScrollViewer>
+
+        <!-- ============ 未连接服务器且无推荐内容：居中欢迎引导 ============
+             必须声明在 ScrollViewer 之后：ScrollViewer 即使背景透明也参与命中测试，
+             放在它前面会把下面的两个按钮盖住，表现为「点了没反应」。 -->
+        <StackPanel Visibility="{x:Bind ViewModel.WelcomePanelVisibility, Mode=OneWay}"
+                    HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" MaxWidth="460">
+            <TextBlock Text="EmbyPlayer" FontSize="40" FontWeight="Bold" HorizontalAlignment="Center" />
+            <TextBlock Text="连接你的 Emby 服务器，或填写 TMDB API Key，海报墙即刻呈现" Opacity="0.7"
+                       HorizontalAlignment="Center" TextAlignment="Center" FontSize="15" TextWrapping="Wrap" />
+            <!-- 固定竖排：窗口一窄，横排两个按钮就会挤在一起叠字 -->
+            <StackPanel x:Name="WelcomeButtons" Orientation="Vertical" Spacing="10"
+                        HorizontalAlignment="Center" Margin="0,16,0,0">
+                <Button Content="＋  连接服务器"
+                        FontSize="16" Padding="24,10" MinWidth="240" HorizontalContentAlignment="Center"
+                        Style="{StaticResource AccentButtonStyle}"
+                        Command="{x:Bind ViewModel.GoConnectServerCommand, Mode=OneWay}" />
+                <Button Content="填写 TMDB API Key"
+                        FontSize="16" Padding="20,10" MinWidth="240" HorizontalContentAlignment="Center"
+                        Click="TmdbKey_Click"
+                        ToolTipService.ToolTip="没有 Emby 服务器时，用免费的 TMDB Key 也能看在线推荐海报墙" />
+            </StackPanel>
+            <TextBlock Opacity="0.5" FontSize="12" TextAlignment="Center" TextWrapping="Wrap"
+                       Text="TMDB Key 免费申请，只保存在本机，不会上传到任何地方。也可以稍后在「设置 → 在线内容（TMDB）」里修改。" />
+        </StackPanel>
     </Grid>
 </Page>

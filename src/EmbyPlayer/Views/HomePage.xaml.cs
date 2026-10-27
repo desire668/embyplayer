@@ -114,6 +114,58 @@ public sealed partial class HomePage : Page
         _carousel.Start();
     }
 
+    /// <summary>
+    /// 欢迎面板的「填写 TMDB API Key」：没有 Emby 服务器时，用户也能用一个免费的
+    /// TMDB Key 把在线推荐海报墙打开（Key 只存本机 settings.json）。
+    /// </summary>
+    private async void TmdbKey_Click(object sender, RoutedEventArgs e)
+    {
+        var settings = App.Services.GetRequiredService<Services.SettingsService>();
+
+        var box = new TextBox
+        {
+            Header = "TMDB API Key（v3 auth，密钥）",
+            PlaceholderText = "32 位密钥，形如 0123456789abcdef0123456789abcdef",
+            Text = settings.Current.TmdbApiKey ?? "",
+        };
+
+        var hint = new TextBlock
+        {
+            Text = "两种都支持：32 位的「API Key（v3 auth）」密钥，或以 eyJ 开头的「API Read Access Token」令牌，整段复制粘贴即可。"
+                 + "免费申请：themoviedb.org → 账户设置 → API → 申请 API 密钥（用途选个人 / 开发者即可）。留空并保存则关闭在线推荐。",
+            Opacity = 0.6,
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap
+        };
+
+        var panel = new StackPanel { Spacing = 10, MinWidth = 380 };
+        panel.Children.Add(box);
+        panel.Children.Add(hint);
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "填写 TMDB API Key",
+            Content = panel,
+            PrimaryButtonText = "保存并加载",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        var key = box.Text.Trim();
+        settings.Current.TmdbApiKey = string.IsNullOrEmpty(key) ? null : key;
+        settings.Save();
+
+        // 重新拉取首页：填了 Key 会立刻出现 TMDB 推荐，清空则回到欢迎引导
+        await ViewModel.InitializeAsync();
+        StartCarousel();
+    }
+
     private void ResumeList_ItemClick(object sender, ItemClickEventArgs e)
     {
         if (e.ClickedItem is ItemCard card)

@@ -21,3 +21,8 @@ crash.log
 
 # WorkBuddy agent data (memory / build scratch)
 .workbuddy/
+
+# 本地截图 / 调试工具产物（不进仓库）
+tools/cap/
+tools/shot/
+tools/*.png

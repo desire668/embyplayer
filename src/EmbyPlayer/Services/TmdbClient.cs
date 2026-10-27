@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Text.Json;
 using EmbyPlayer.Models;
 
@@ -47,7 +48,7 @@ public sealed class TmdbClient
     /// <summary>本周热门电影（zh-CN），海报墙轮播数据源。</summary>
     public async Task<List<TmdbMovie>> GetTrendingAsync(CancellationToken ct = default)
     {
-        var url = $"{BaseUrl}/trending/movie/week?language=zh-CN&api_key={ApiKey}";
+        var url = $"{BaseUrl}/trending/movie/week?language=zh-CN";
         var response = await GetAsync<TmdbPagedResponse<TmdbMovie>>(url, ct);
         return response.Results;
     }
@@ -55,9 +56,31 @@ public sealed class TmdbClient
     /// <summary>电影详情（补片长与类型名，zh-CN）。</summary>
     public async Task<TmdbMovieDetail?> GetMovieDetailAsync(int movieId, CancellationToken ct = default)
     {
-        var url = $"{BaseUrl}/movie/{movieId}?language=zh-CN&api_key={ApiKey}";
+        var url = $"{BaseUrl}/movie/{movieId}?language=zh-CN";
         return await GetAsync<TmdbMovieDetail>(url, ct);
     }
+
+    /// <summary>
+    /// 按 Key 的形态拼请求：
+    /// v3「API Key」（32 位十六进制）走 <c>?api_key=</c>；
+    /// v4「Read Access Token」（eyJ 开头的长串）走 <c>Authorization: Bearer</c>。
+    /// 用户从 TMDB 后台复制到的多半是 v4 令牌，两种都支持就不用让他再去找另一种。
+    /// </summary>
+    private HttpRequestMessage BuildRequest(string url)
+    {
+        var key = ApiKey;
+        if (IsBearerToken(key))
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+            return request;
+        }
+
+        return new HttpRequestMessage(HttpMethod.Get, url + "&api_key=" + Uri.EscapeDataString(key));
+    }
+
+    private static bool IsBearerToken(string key) =>
+        key.StartsWith("eyJ", StringComparison.OrdinalIgnoreCase) || key.Length > 64;
 
     private async Task<T> GetAsync<T>(string url, CancellationToken ct)
     {
@@ -68,7 +91,17 @@ public sealed class TmdbClient
         {
             try
             {
-                using var response = await _http.GetAsync(url, ct);
+                using var request = BuildRequest(url);
+                using var response = await _http.SendAsync(request, ct);
+
+                // 401 直接给出可操作的中文提示，不重试（重试也不会变对）
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                {
+                    throw new InvalidOperationException(
+                        "API Key / 令牌无效（401）。请回到 TMDB 后台重新复制完整：32 位的 v3「API Key」，"
+                        + "或以 eyJ 开头的 v4「Read Access Token」，两者都支持。");
+                }
+
                 response.EnsureSuccessStatusCode();
                 await using var stream = await response.Content.ReadAsStreamAsync(ct);
                 var result = await JsonSerializer.DeserializeAsync<T>(stream, JsonOptions, ct);

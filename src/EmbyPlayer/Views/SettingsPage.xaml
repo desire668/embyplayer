@@ -57,11 +57,11 @@
 
             <StackPanel Spacing="6">
                 <TextBlock Text="在线内容（TMDB）" FontSize="16" FontWeight="SemiBold" />
-                <TextBox Header="TMDB API Key（v3 auth，可选）"
+                <TextBox Header="TMDB API Key / 令牌（可选）"
                          Text="{x:Bind ViewModel.TmdbApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                         PlaceholderText="在 themoviedb.org 免费申请后粘贴到这里" />
+                         PlaceholderText="32 位密钥（1edb…）或以 eyJ 开头的 v4 令牌，整段粘贴" />
                 <TextBlock Opacity="0.6" FontSize="12" TextWrapping="Wrap"
-                           Text="内容源切到「TMDB 在线推荐」时需要它；未登录服务器时也会用它填充首页。Key 只存在本机设置里，不会随安装包分发。" />
+                           Text="两种都支持：v3「API Key」（32 位十六进制）走 api_key 参数，v4「Read Access Token」（eyJ 开头）走 Bearer 请求头。内容源切到「TMDB 在线推荐」时需要它；未登录服务器时也会用它填充首页。Key 只存在本机设置里，不会随安装包分发。" />
                 <HyperlinkButton Content="去 themoviedb.org 申请 API Key"
                                  NavigateUri="https://www.themoviedb.org/settings/api" />
             </StackPanel>
