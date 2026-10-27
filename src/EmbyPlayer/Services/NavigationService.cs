@@ -17,6 +17,9 @@ public sealed class NavigationService
         where TPage : Page =>
         Frame?.Navigate(typeof(TPage), parameter, transition);
 
+    /// <summary>页面栈里是否还有上一页（添加服务器页据此决定「返回」是回退还是直接回首页）。</summary>
+    public bool CanGoBack => Frame?.CanGoBack == true;
+
     public void GoBack()
     {
         if (Frame?.CanGoBack != true)

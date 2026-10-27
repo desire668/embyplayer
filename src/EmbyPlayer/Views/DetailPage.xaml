@@ -4,8 +4,35 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:models="using:EmbyPlayer.Models">
 
-    <Grid>
-        <ScrollViewer x:Name="RootScroll" ViewChanged="RootScroll_ViewChanged">
+    <Grid Background="{ThemeResource DetailPageBackground}">
+        <Grid.RowDefinitions>
+            <!-- 背景只铺上半部分：铺满整页会把小图拉得太模糊 -->
+            <RowDefinition Height="0.45*" MinHeight="240" />
+            <RowDefinition Height="0.55*" />
+        </Grid.RowDefinitions>
+
+        <!-- 影片背景底纹：背景图铺在页面上半部分（下方渐变淡出到页面底色），
+             纯装饰，不参与命中测试 -->
+        <Grid Grid.Row="0"
+              Visibility="{x:Bind ViewModel.BackdropVisibility, Mode=OneWay}"
+              IsHitTestVisible="False">
+            <Image Source="{x:Bind ViewModel.BackdropSource, Mode=OneWay}"
+                   Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            <Rectangle Fill="{ThemeResource DetailBackdropScrim}" />
+            <!-- 顶部再压一层浅渐变，让返回按钮与标题更清楚 -->
+            <Rectangle>
+                <Rectangle.Fill>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#33000000" Offset="0" />
+                        <GradientStop Color="#00000000" Offset="0.3" />
+                    </LinearGradientBrush>
+                </Rectangle.Fill>
+            </Rectangle>
+            <!-- 底部渐隐到页面底色：铺满整个背景区，过渡拉长，末端与页面底色完全同色 -->
+            <Rectangle Fill="{ThemeResource DetailBackdropFade}" />
+        </Grid>
+
+        <ScrollViewer x:Name="RootScroll" Grid.RowSpan="2" ViewChanged="RootScroll_ViewChanged">
             <StackPanel Padding="24" Spacing="16" MaxWidth="1000" HorizontalAlignment="Left">
 
                 <Button Click="BackButton_Click" ToolTipService.ToolTip="返回">
@@ -84,11 +111,12 @@
             </StackPanel>
         </ScrollViewer>
 
-        <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+        <ProgressRing Grid.RowSpan="2" IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
                       HorizontalAlignment="Center" VerticalAlignment="Center" />
 
         <!-- 集列表很长时的快捷跳转：没到底显示「到底部」，到底后变成「回顶部」 -->
         <Button x:Name="JumpButton"
+                Grid.RowSpan="2"
                 HorizontalAlignment="Right" VerticalAlignment="Bottom"
                 Margin="0,0,32,24" Height="40" MinWidth="118" CornerRadius="20"
                 ToolTipService.ToolTip="直达底部"

@@ -21,6 +21,17 @@
             <!-- 窗口配色跟随主题：暗主题纯黑，亮主题默认；导航选中态保留品牌蓝 -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
+                    <!-- 详情页背景底纹的压暗蒙版：亮主题用浅底高不透明度，保证文字可读 -->
+                    <SolidColorBrush x:Key="DetailBackdropScrim" Color="#FFF3F3F3" Opacity="0.84" />
+                    <!-- 详情页页面底色（与渐变终点同色，保证两者衔接无缝） -->
+                    <SolidColorBrush x:Key="DetailPageBackground" Color="#FFF3F3F3" />
+                    <!-- 背景只铺上半部分，底部一路渐隐到页面底色：终点色必须等于页面底色，否则会露出深色横带 -->
+                    <LinearGradientBrush x:Key="DetailBackdropFade" StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#00F3F3F3" Offset="0" />
+                        <GradientStop Color="#00F3F3F3" Offset="0.28" />
+                        <GradientStop Color="#7DF3F3F3" Offset="0.70" />
+                        <GradientStop Color="#FFF3F3F3" Offset="1" />
+                    </LinearGradientBrush>
                     <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#141D3FD8" />
                     <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPointerOver" Color="#1F1D3FD8" />
                     <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPressed" Color="#291D3FD8" />
@@ -30,6 +41,17 @@
                     <SolidColorBrush x:Key="NavigationViewItemSelectionIndicatorBrush" Color="#FF1D3FD8" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
+                    <!-- 详情页背景底纹的压暗蒙版：暗主题内容区是纯黑，蒙版也用纯黑 -->
+                    <SolidColorBrush x:Key="DetailBackdropScrim" Color="#FF000000" Opacity="0.74" />
+                    <!-- 详情页页面底色：实测 WinUI 暗色内容区是 #111111（不是纯黑） -->
+                    <SolidColorBrush x:Key="DetailPageBackground" Color="#FF111111" />
+                    <!-- 背景只铺上半部分，底部一路渐隐到页面底色：终点色必须等于页面底色，否则会露出深色横带 -->
+                    <LinearGradientBrush x:Key="DetailBackdropFade" StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#00111111" Offset="0" />
+                        <GradientStop Color="#00111111" Offset="0.28" />
+                        <GradientStop Color="#7D111111" Offset="0.70" />
+                        <GradientStop Color="#FF111111" Offset="1" />
+                    </LinearGradientBrush>
                     <!-- 暗主题：侧边栏与内容区纯黑 -->
                     <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="#FF000000" />
                     <SolidColorBrush x:Key="NavigationViewCollapsedPaneBackground" Color="#FF000000" />

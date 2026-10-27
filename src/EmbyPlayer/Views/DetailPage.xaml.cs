@@ -41,9 +41,20 @@ public sealed partial class DetailPage : Page
     {
         _posterHandled = false;
 
-        if (e.Parameter is string itemId)
+        // 参数约定："autoplay:<itemId>" 表示加载完成后直接开始播放（海报墙首页大图「播放」按钮），
+        // 其余情况参数就是 itemId 本身
+        var param = e.Parameter as string;
+        var autoPlay = false;
+        var itemId = param;
+        if (param?.StartsWith("autoplay:", StringComparison.Ordinal) == true)
         {
-            _ = ViewModel.LoadAsync(itemId);
+            autoPlay = true;
+            itemId = param["autoplay:".Length..];
+        }
+
+        if (itemId is not null)
+        {
+            _ = LoadAndMaybePlayAsync(itemId, autoPlay);
         }
 
         // 文字区与剧集区错峰浮起，让视线先落在海报上
@@ -55,6 +66,16 @@ public sealed partial class DetailPage : Page
         {
             _posterHandled = true;
             FluidNavigation.StartPoster(DetailPoster);
+        }
+    }
+
+    /// <summary>加载详情，海报墙首页带 autoplay 标记时在加载完成后立即触发播放。</summary>
+    private async Task LoadAndMaybePlayAsync(string itemId, bool autoPlay)
+    {
+        await ViewModel.LoadAsync(itemId);
+        if (autoPlay && ViewModel.ErrorMessage is null)
+        {
+            await ViewModel.PlayCommand.ExecuteAsync(null);
         }
     }
 

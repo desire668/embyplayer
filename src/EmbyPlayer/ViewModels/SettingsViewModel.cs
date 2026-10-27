@@ -48,6 +48,10 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private string _danmakuServerUrl = "";
 
+    /// <summary>TMDB v3 API Key：内容源切到 TMDB 时用它拉在线推荐，保存在本机，不进源码。</summary>
+    [ObservableProperty]
+    private string _tmdbApiKey = "";
+
     private bool _initialized;
 
     public SettingsViewModel(SettingsService settings, NavigationService navigation, EmbyApiClient api, UpdateService update)
@@ -64,6 +68,7 @@ public partial class SettingsViewModel : ObservableObject
         _danmakuScrollDuration = settings.Current.DanmakuScrollDuration;
         _danmakuDisplayArea = settings.Current.DanmakuDisplayArea;
         _danmakuServerUrl = settings.Current.DanmakuServerUrl ?? "";
+        _tmdbApiKey = settings.Current.TmdbApiKey ?? "";
         _reduceMotion = settings.Current.ReduceMotion;
         FluidMotion.ReduceMotion = _reduceMotion;
         _initialized = true;
@@ -124,6 +129,16 @@ public partial class SettingsViewModel : ObservableObject
     partial void OnDanmakuScrollDurationChanged(int value) => SaveDanmaku();
     partial void OnDanmakuDisplayAreaChanged(double value) => SaveDanmaku();
     partial void OnDanmakuServerUrlChanged(string value) => SaveDanmaku();
+
+    partial void OnTmdbApiKeyChanged(string value)
+    {
+        if (!_initialized)
+        {
+            return;
+        }
+        _settings.Current.TmdbApiKey = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        _settings.Save();
+    }
 
     private void SaveDanmaku()
     {

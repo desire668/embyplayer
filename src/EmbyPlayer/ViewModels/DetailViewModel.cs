@@ -67,6 +67,27 @@ public partial class DetailViewModel : ObservableObject
     [ObservableProperty]
     private ImageSource? _posterSource;
 
+    /// <summary>
+    /// 详情页背景：影片背景图（没有背景图时退回海报）。
+    /// 只铺在页面上半部分，所以按中等宽度请求即可，放大倍数小、不再糊成一片。
+    /// </summary>
+    [ObservableProperty]
+    private ImageSource? _backdropSource;
+
+    /// <summary>
+    /// 背景请求与解码宽度。海报统一按 300 解码（够用且省内存），
+    /// 但背景要放大到半个页面宽，300 会糊，所以单独走接近原图的尺寸。
+    /// </summary>
+    private const int BackdropDecodeWidth = 1280;
+
+    public Microsoft.UI.Xaml.Visibility BackdropVisibility =>
+        BackdropSource is not null
+            ? Microsoft.UI.Xaml.Visibility.Visible
+            : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    partial void OnBackdropSourceChanged(ImageSource? value) =>
+        OnPropertyChanged(nameof(BackdropVisibility));
+
     // 弹幕 UI 绑定
     [ObservableProperty]
     private bool _danmakuEnabled;
@@ -156,10 +177,37 @@ public partial class DetailViewModel : ObservableObject
             : $"{ts.Minutes} 分钟";
     }
 
+    /// <summary>
+    /// 取详情页背景图：优先自己的背景图 → 上级（剧集）背景图 → 海报。
+    /// 三者都按 BackdropDecodeWidth 请求，铺满页面时放大成柔化底纹；都没有则返回 null（不显示背景）。
+    /// </summary>
+    private ImageSource? BuildBackdrop(BaseItemDto item, string? primaryTag)
+    {
+        if (item.BackdropImageTags?.FirstOrDefault() is { } tag)
+        {
+            return ImageCacheService.Get(_api.GetBackdropImageUrl(item.Id, tag, BackdropDecodeWidth),
+                decodeWidth: BackdropDecodeWidth);
+        }
+
+        if (!string.IsNullOrEmpty(item.ParentBackdropItemId) &&
+            item.ParentBackdropImageTags?.FirstOrDefault() is { } parentTag)
+        {
+            return ImageCacheService.Get(
+                _api.GetBackdropImageUrl(item.ParentBackdropItemId!, parentTag, BackdropDecodeWidth),
+                decodeWidth: BackdropDecodeWidth);
+        }
+
+        return primaryTag is null
+            ? null
+            : ImageCacheService.Get(_api.GetPrimaryImageUrl(item.Id, primaryTag, BackdropDecodeWidth),
+                decodeWidth: BackdropDecodeWidth);
+    }
+
     public async Task LoadAsync(string itemId)
     {
         IsLoading = true;
         ErrorMessage = null;
+        BackdropSource = null;
 
         // 先用列表里已经解析过的海报 URL 顶上：命中缓存的话这一帧就能显示，
         // 不用等 GetItemAsync 回来，也不会出现「先空框、后蹦出图」。
@@ -176,6 +224,7 @@ public partial class DetailViewModel : ObservableObject
             PosterSource = primaryTag is null
                 ? null
                 : ImageCacheService.Get(_api.GetPrimaryImageUrl(item.Id, primaryTag));
+            BackdropSource = BuildBackdrop(item, primaryTag);
             OnPropertyChanged(nameof(IsSeries));
             OnPropertyChanged(nameof(IsMovie));
             OnPropertyChanged(nameof(MetaText));

@@ -20,7 +20,7 @@
 #endif
 
 #define AppName    "EmbyPlayer"
-#define AppVersion "1.0.6"
+#define AppVersion "1.0.7"
 #define AppURL     "https://github.com/desire668/embyplayer"
 
 [Setup]

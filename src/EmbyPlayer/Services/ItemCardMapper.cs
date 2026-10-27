@@ -99,7 +99,7 @@ public static class ItemCardMapper
     }
 
     /// <summary>集号文本：有季号用 S01E05，否则「第 5 集」，都没有则返回空。</summary>
-    private static string BuildEpisodeLabel(BaseItemDto episode)
+    public static string BuildEpisodeLabel(BaseItemDto episode)
     {
         var episodeText = episode.IndexNumber is int n ? n.ToString("00") : "";
         if (episode.ParentIndexNumber is int season)

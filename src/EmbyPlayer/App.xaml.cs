@@ -43,6 +43,7 @@ public partial class App : Application
         var services = new ServiceCollection();
         services.AddSingleton<SettingsService>();
         services.AddSingleton<EmbyApiClient>();
+        services.AddSingleton<TmdbClient>();
         services.AddSingleton<NavigationService>();
         services.AddSingleton<MpvController>();
         services.AddSingleton<PlaybackSessionManager>();
@@ -50,6 +51,7 @@ public partial class App : Application
         services.AddSingleton<DanmakuService>();
         services.AddSingleton<UpdateService>();
         services.AddTransient<LoginViewModel>();
+        services.AddTransient<HomeViewModel>();
         services.AddTransient<LibraryViewModel>();
         services.AddTransient<DetailViewModel>();
         services.AddTransient<SettingsViewModel>();
@@ -76,25 +78,20 @@ public partial class App : Application
             {
                 api.Configure(current.Url, current.AccessToken);
                 navigation.ShowShellNavigation(true);
-                navigation.NavigateTo<LibraryPage>();
+                navigation.NavigateTo<HomePage>();
             }
             else
             {
-                navigation.ShowShellNavigation(false);
-                navigation.NavigateTo<LoginPage>();
+                // 凭据失效且无可切换的服务器：回到海报墙首页（未登录态显示连接引导）
+                navigation.ShowShellNavigation(true);
+                navigation.NavigateTo<HomePage>();
             }
         });
 
-        if (settings.IsLoggedIn)
-        {
-            navigation.ShowShellNavigation(true);
-            navigation.NavigateTo<LibraryPage>();
-        }
-        else
-        {
-            navigation.ShowShellNavigation(false);
-            navigation.NavigateTo<LoginPage>();
-        }
+        // 首启不再出现「添加 Emby 服务器」页：无论是否已配置服务器，一律进入海报墙首页。
+        // 未登录时首页显示「连接服务器」引导按钮，侧栏「＋」也可随时添加服务器。
+        navigation.ShowShellNavigation(true);
+        navigation.NavigateTo<HomePage>();
 
         // 启动时静默检查 GitHub Release 是否有新版本，发现新版本时弹窗让用户选择前往下载或暂不更新
         // fire-and-forget：不阻塞启动流程；任何失败写入崩溃日志但不打扰用户

@@ -4,6 +4,16 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <Grid>
+        <!-- 左上角返回：放弃添加服务器时回到海报墙首页 -->
+        <Button HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16,12,0,0"
+                Padding="10,5" Background="Transparent" BorderThickness="0"
+                Command="{x:Bind ViewModel.GoBackCommand, Mode=OneWay}">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+                <TextBlock Text="‹" FontSize="15" />
+                <TextBlock Text="返回" FontSize="13" />
+            </StackPanel>
+        </Button>
+
         <StackPanel Width="360" VerticalAlignment="Center" Spacing="12">
             <TextBlock Text="EmbyPlayer" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center" />
             <TextBlock Text="连接到你的 Emby 服务器" Opacity="0.7"

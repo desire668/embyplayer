@@ -45,6 +45,21 @@ public partial class LoginViewModel : ObservableObject
         ErrorMessage = null;
     }
 
+    /// <summary>添加服务器页左上角「返回」：恢复侧栏并返回海报墙首页（有上一页时直接回退）。</summary>
+    [RelayCommand]
+    private void GoBack()
+    {
+        _navigation.ShowShellNavigation(true);
+        if (_navigation.CanGoBack)
+        {
+            _navigation.GoBack();
+        }
+        else
+        {
+            _navigation.NavigateTo<HomePage>();
+        }
+    }
+
     [RelayCommand]
     private async Task LoginAsync()
     {
@@ -70,7 +85,7 @@ public partial class LoginViewModel : ObservableObject
             _settings.AddOrUpdateServer(url, auth.AccessToken, auth.User?.Id ?? "", auth.User?.Name ?? Username, serverName);
             _api.Configure(url, auth.AccessToken);
             _navigation.ShowShellNavigation(true);
-            _navigation.NavigateTo<LibraryPage>();
+            _navigation.NavigateTo<HomePage>();
         }
         catch (HttpRequestException)
         {

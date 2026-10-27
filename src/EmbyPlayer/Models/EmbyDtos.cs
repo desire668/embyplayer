@@ -44,6 +44,19 @@ public class BaseItemDto
     public Dictionary<string, string>? ImageTags { get; set; }
     public UserItemDataDto? UserData { get; set; }
 
+    /// <summary>背景图 tags（首页海报墙大图轮播用，取第一张即可）。</summary>
+    public List<string>? BackdropImageTags { get; set; }
+
+    /// <summary>上级条目（剧集）背景图的 item id 与 tags：单集本身通常没有背景图。</summary>
+    public string? ParentBackdropItemId { get; set; }
+    public List<string>? ParentBackdropImageTags { get; set; }
+
+    /// <summary>社区评分（如 7.4）。</summary>
+    public double? CommunityRating { get; set; }
+
+    /// <summary>类型标签（需要 Fields=Genres 才返回）。</summary>
+    public List<string>? Genres { get; set; }
+
     public string IndexNumberText => IndexNumber is int n ? n.ToString() : "";
 
     public string RuntimeText
@@ -72,6 +85,9 @@ public class UserItemDataDto
     public long PlaybackPositionTicks { get; set; }
     public bool Played { get; set; }
     public bool IsFavorite { get; set; }
+
+    /// <summary>最近一次播放时间（首页「继续播放 · X分钟前」副标题用）。</summary>
+    public DateTime? LastPlayedDate { get; set; }
 }
 
 public class MediaSourceInfo

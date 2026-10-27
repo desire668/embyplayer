@@ -2,31 +2,59 @@
     x:Class="EmbyPlayer.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:EmbyPlayer"
     xmlns:models="using:EmbyPlayer.Models"
     Title="EmbyPlayer">
 
-    <NavigationView x:Name="NavView" PaneDisplayMode="Left"
-                    IsBackButtonVisible="Collapsed" IsSettingsVisible="False"
-                    ItemInvoked="NavView_ItemInvoked">
-        <NavigationView.PaneHeader>
-            <StackPanel Spacing="4" Margin="8,8,8,8">
-                <TextBlock Text="服务器" FontSize="12" Opacity="0.7" />
-                <StackPanel Orientation="Horizontal" Spacing="4">
-                    <ComboBox x:Name="ServerBox" MinWidth="150"
-                              DisplayMemberPath="DisplayName"
-                              SelectionChanged="ServerBox_SelectionChanged" />
-                    <Button Content="＋" Click="AddServer_Click" ToolTipService.ToolTip="添加服务器" />
-                </StackPanel>
-            </StackPanel>
-        </NavigationView.PaneHeader>
+    <Grid x:Name="Root">
+        <!-- PaneDisplayMode=Auto：窗口变窄时自动收成图标栏 / 抽屉，宽时展开 -->
+        <NavigationView x:Name="NavView" PaneDisplayMode="Auto"
+                        CompactModeThresholdWidth="640"
+                        ExpandedModeThresholdWidth="1008"
+                        IsBackButtonVisible="Collapsed" IsSettingsVisible="False"
+                        ItemInvoked="NavView_ItemInvoked"
+                        DisplayModeChanged="NavView_DisplayModeChanged">
+            <NavigationView.PaneHeader>
+                <Grid Margin="8,8,8,8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="内容源" FontSize="12" Opacity="0.7" />
+                    <Grid Grid.Row="1" Margin="0,4,0,0" ColumnSpacing="4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="ServerBox" Grid.Column="0"
+                                  MinWidth="120" HorizontalAlignment="Stretch"
+                                  DisplayMemberPath="DisplayName"
+                                  SelectionChanged="ServerBox_SelectionChanged" />
+                        <Button Grid.Column="1" Content="＋" Click="AddServer_Click"
+                                ToolTipService.ToolTip="添加服务器" />
+                    </Grid>
+                </Grid>
+            </NavigationView.PaneHeader>
 
-        <NavigationView.MenuItems>
-            <NavigationViewItem Content="媒体库" Tag="Library" Icon="Video" />
-            <NavigationViewItem Content="最近播放" Tag="Resume" Icon="Play" />
-            <NavigationViewItem Content="搜索" Tag="Search" Icon="Find" />
-            <NavigationViewItem Content="收藏" Tag="Favorites" Icon="Favorite" />
-            <NavigationViewItem Content="设置" Tag="Settings" Icon="Setting" />
-        </NavigationView.MenuItems>
-        <Frame x:Name="ContentFrame" />
-    </NavigationView>
+            <NavigationView.MenuItems>
+                <NavigationViewItem Content="首页" Tag="Home" Icon="Home" />
+                <NavigationViewItem Content="媒体库" Tag="Library" Icon="Video" />
+                <NavigationViewItem Content="搜索" Tag="Search" Icon="Find" />
+                <NavigationViewItem Content="收藏" Tag="Favorites" Icon="Favorite" />
+                <NavigationViewItem Content="设置" Tag="Settings" Icon="Setting" />
+            </NavigationView.MenuItems>
+            <Frame x:Name="ContentFrame" />
+        </NavigationView>
+
+        <!-- 左栏宽度拖拽条：贴在左栏右边缘的透明热区，只有左栏真正展开时才可用 -->
+        <local:PaneResizeGrip x:Name="PaneResizer" Width="8" HorizontalAlignment="Left"
+                VerticalAlignment="Stretch" Background="Transparent"
+                Visibility="Collapsed"
+                ToolTipService.ToolTip="拖动调整侧栏宽度，双击恢复默认"
+                PointerPressed="PaneResizer_PointerPressed"
+                PointerMoved="PaneResizer_PointerMoved"
+                PointerReleased="PaneResizer_PointerReleased"
+                PointerCanceled="PaneResizer_PointerReleased"
+                DoubleTapped="PaneResizer_DoubleTapped" />
+    </Grid>
 </Window>

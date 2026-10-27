@@ -47,7 +47,7 @@ public static class ImageCacheService
     /// 取（或建）与 url 对应的位图。必须在 UI 线程调用 —— BitmapImage 是
     /// DependencyObject，有线程亲和性；绑定求值本来就在 UI 线程，正常路径不会踩到。
     /// </summary>
-    public static ImageSource? Get(string? url)
+    public static ImageSource? Get(string? url, string? fallbackUrl = null, int? decodeWidth = null)
     {
         if (string.IsNullOrEmpty(url))
         {
@@ -71,7 +71,8 @@ public static class ImageCacheService
             image = new BitmapImage
             {
                 UriSource = new Uri(url),
-                DecodePixelWidth = DecodeWidth,
+                // 大图用途（如详情页背景）按接近原始尺寸解码，避免放大后糊成一片
+                DecodePixelWidth = decodeWidth ?? DecodeWidth,
                 DecodePixelType = DecodePixelType.Logical,
             };
         }
@@ -79,6 +80,11 @@ public static class ImageCacheService
         {
             // 非 UI 线程或 URL 非法：退回 null，卡片显示首字母占位，不让整页崩掉
             return null;
+        }
+
+        if (!string.IsNullOrEmpty(fallbackUrl))
+        {
+            AttachFallback(image, fallbackUrl!);
         }
 
         lock (Gate)
@@ -106,6 +112,28 @@ public static class ImageCacheService
 
             return image;
         }
+    }
+
+    /// <summary>
+    /// 主地址加载失败时切到备用地址（TMDB 图片在国内直连常被拦，改用镜像兜底）。
+    /// 只切一次——已指向备用地址时不再处理，避免失败后无限重试。
+    /// </summary>
+    private static void AttachFallback(BitmapImage image, string fallbackUrl)
+    {
+        image.ImageFailed += (_, _) =>
+        {
+            try
+            {
+                if (!string.Equals(image.UriSource?.OriginalString, fallbackUrl, StringComparison.OrdinalIgnoreCase))
+                {
+                    image.UriSource = new Uri(fallbackUrl);
+                }
+            }
+            catch
+            {
+                // 兜底也失败：保留首字母占位，不影响其它卡片
+            }
+        };
     }
 
     /// <summary>清空缓存（切换服务器 / 重新登录时调用，避免串图）。</summary>

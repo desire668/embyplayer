@@ -14,10 +14,28 @@ public class ServerEntry
     public string DisplayName => ServerName ?? (string.IsNullOrEmpty(UserName) ? Url : UserName);
 }
 
+/// <summary>
+/// 内容源下拉里的一项：一个已添加的 Emby 服务器，或内置的「TMDB 在线推荐」。
+/// 下拉框要同时容纳两者，所以统一成这个外壳（DisplayName 直接给 ComboBox 用）。
+/// </summary>
+public sealed class ContentSourceOption
+{
+    public string Id { get; init; } = "";
+    public string DisplayName { get; init; } = "";
+    public bool IsTmdb { get; init; }
+    public ServerEntry? Server { get; init; }
+}
+
 public class AppSettings
 {
     public List<ServerEntry> Servers { get; set; } = new();
     public string? CurrentServerId { get; set; }
+
+    /// <summary>首页内容源：null / "server" = 当前 Emby 服务器，"tmdb" = TMDB 在线推荐。</summary>
+    public string? SourceMode { get; set; }
+
+    /// <summary>左侧导航栏展开时的宽度（用户拖动分隔条调整后记住）。缺省 / 越界时回落到 320。</summary>
+    public int NavigationPaneWidth { get; set; } = 320;
     public string? MpvPath { get; set; }
     public bool AutoPlayNext { get; set; } = true;
     public string? DeviceId { get; set; }
@@ -34,6 +52,12 @@ public class AppSettings
     /// <summary>弹幕服务器地址：LogVar 弹幕 API 基地址（如 https://host/token），或含 {title} 的旧版直链模板。</summary>
     public string? DanmakuServerUrl { get; set; }
 
+    /// <summary>
+    /// TMDB v3 API Key（用户在设置页填写，保存在本机 settings.json）。
+    /// 刻意不放进源码：仓库是公开的，硬编码的 Key 会被他人拿去占用配额。
+    /// </summary>
+    public string? TmdbApiKey { get; set; }
+
     // 旧版单服务器字段（仅用于迁移）
     public string? ServerUrl { get; set; }
     public string? AccessToken { get; set; }
@@ -43,6 +67,9 @@ public class AppSettings
 
 public sealed class SettingsService
 {
+    /// <summary>内容源标识：TMDB 在线推荐（不写入服务器列表）。</summary>
+    public const string TmdbSourceId = "tmdb";
+
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     private readonly string _settingsPath = Path.Combine(
@@ -71,6 +98,55 @@ public sealed class SettingsService
 
     public bool IsLoggedIn =>
         CurrentServer is not null && !string.IsNullOrEmpty(CurrentServer.AccessToken);
+
+    /// <summary>首页内容源是否为 TMDB 在线推荐（已添加服务器的用户也可随时切过去）。</summary>
+    public bool IsTmdbSource =>
+        string.Equals(Current.SourceMode, TmdbSourceId, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>内容源下拉项：所有已添加的服务器 + 末尾的「TMDB 在线推荐」。</summary>
+    public List<ContentSourceOption> SourceOptions
+    {
+        get
+        {
+            var options = Current.Servers
+                .Select(s => new ContentSourceOption
+                {
+                    Id = s.Id,
+                    DisplayName = s.DisplayName,
+                    Server = s
+                })
+                .ToList();
+            options.Add(new ContentSourceOption
+            {
+                Id = TmdbSourceId,
+                DisplayName = "TMDB 在线推荐",
+                IsTmdb = true
+            });
+            return options;
+        }
+    }
+
+    /// <summary>当前内容源选项（用于下拉框初始选中）。</summary>
+    public ContentSourceOption? CurrentSourceOption =>
+        IsTmdbSource
+            ? new ContentSourceOption { Id = TmdbSourceId, DisplayName = "TMDB 在线推荐", IsTmdb = true }
+            : CurrentServer is { } server
+                ? new ContentSourceOption { Id = server.Id, DisplayName = server.DisplayName, Server = server }
+                : null;
+
+    /// <summary>切换内容源。切到 TMDB 时保留当前服务器配置，播放时仍按片名回媒体库检索。</summary>
+    public void SetSourceMode(bool tmdb)
+    {
+        var mode = tmdb ? TmdbSourceId : "server";
+        if (string.Equals(Current.SourceMode, mode, StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrEmpty(Current.SourceMode))
+        {
+            return;
+        }
+        Current.SourceMode = mode;
+        Save();
+        ServersChanged?.Invoke();
+    }
 
     public string? ServerUrl => CurrentServer?.Url;
     public string? AccessToken => CurrentServer?.AccessToken;
@@ -130,6 +206,8 @@ public sealed class SettingsService
         existing.UserName = userName;
         existing.ServerName = string.IsNullOrEmpty(serverName) ? existing.ServerName : serverName;
         Current.CurrentServerId = existing.Id;
+        // 刚登录的服务器立刻成为内容源（之前停在 TMDB 时也要切回来）
+        Current.SourceMode = "server";
         Save();
         ServersChanged?.Invoke();
     }

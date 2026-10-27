@@ -3,8 +3,10 @@ using EmbyPlayer.Services;
 using EmbyPlayer.Views;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using System.IO;
 using Windows.Graphics;
 using Windows.System;
@@ -12,9 +14,27 @@ using Windows.UI;
 
 namespace EmbyPlayer;
 
+/// <summary>
+/// 侧栏宽度拖拽条：完全透明的热区，只在鼠标变成左右箭头光标时暴露自己。两个关键点：
+/// 1) WinUI3 里 UIElement.ProtectedCursor 是受保护成员，必须派生控件才能设置左右调整箭头光标；
+/// 2) 必须由这个 Grid 自己作为命中目标（Background 设 Transparent 才参与命中测试），
+///    若套一层子元素，指针会命中到没有光标的子元素，表现成"鼠标放上去没反应、也拖不动"。
+/// </summary>
+public sealed class PaneResizeGrip : Grid
+{
+    public PaneResizeGrip() =>
+        ProtectedCursor = InputSystemCursor.Create(InputSystemCursorShape.SizeWestEast);
+}
+
 public sealed partial class MainWindow : Window
 {
+    /// <summary>侧栏宽度可拖动范围与默认值。</summary>
+    private const int MinPaneWidth = 180;
+    private const int MaxPaneWidth = 480;
+    private const int DefaultPaneWidth = 320;
+
     private bool _suppressServerChange;
+    private bool _resizingPane;
 
     public MainWindow()
     {
@@ -42,6 +62,107 @@ public sealed partial class MainWindow : Window
         settings.ServersChanged += () => DispatcherQueue.TryEnqueue(RefreshServerBox);
         RefreshServerBox();
         _ = EnsureServerNamesAsync();
+
+        InitPaneResizer();
+    }
+
+    /// <summary>
+    /// 左栏宽度：先用记住的宽度，再挂上拖拽条。
+    /// NavigationView 自身用 PaneDisplayMode=Auto 按窗口宽度在「展开 / 图标栏 / 抽屉」间自适应，
+    /// 展开时用户可以拖动右边缘改宽，双击恢复默认，改动写回设置。
+    /// </summary>
+    private void InitPaneResizer()
+    {
+        var settings = App.Services.GetRequiredService<SettingsService>();
+        var width = settings.Current.NavigationPaneWidth;
+        if (width < MinPaneWidth || width > MaxPaneWidth)
+        {
+            width = DefaultPaneWidth;
+        }
+
+        NavView.OpenPaneLength = width;
+
+        // 首帧布局完成时 DisplayMode 可能还是 Compact，只在 Loaded 里算一次会一直判成"不展开"，
+        // 所以窗口缩放 / 侧栏开合 / 布局变化都要重算（UpdateResizer 自身幂等，不会抖动）
+        NavView.SizeChanged += (_, _) => UpdateResizer();
+        NavView.LayoutUpdated += (_, _) => UpdateResizer();
+        UpdateResizer();
+    }
+
+    /// <summary>拖拽条只在左栏真正展开（且侧栏可见）时贴在左栏右边缘，避免挡住内容点击。</summary>
+    private void UpdateResizer()
+    {
+        var visible = NavView.IsPaneVisible &&
+                      NavView.DisplayMode == NavigationViewDisplayMode.Expanded &&
+                      NavView.IsPaneOpen;
+
+        var target = visible ? Visibility.Visible : Visibility.Collapsed;
+        if (PaneResizer.Visibility != target)
+        {
+            PaneResizer.Visibility = target;
+        }
+
+        if (!visible)
+        {
+            return;
+        }
+
+        // 拖拽条中心对准左栏右边缘（Width=8，所以左移半个身位）
+        var left = NavView.OpenPaneLength - 4;
+        if (Math.Abs(PaneResizer.Margin.Left - left) > 0.5)
+        {
+            PaneResizer.Margin = new Thickness(left, 0, 0, 0);
+        }
+    }
+
+    private void NavView_DisplayModeChanged(NavigationView sender, NavigationViewDisplayModeChangedEventArgs args) =>
+        UpdateResizer();
+
+    private void PaneResizer_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        _resizingPane = true;
+        ((UIElement)sender).CapturePointer(e.Pointer);
+        e.Handled = true;
+    }
+
+    private void PaneResizer_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_resizingPane)
+        {
+            return;
+        }
+
+        // Root 铺满窗口内容区，指针 X 即目标宽度
+        var x = e.GetCurrentPoint(Root).Position.X;
+        NavView.OpenPaneLength = Math.Clamp((int)Math.Round(x), MinPaneWidth, MaxPaneWidth);
+        UpdateResizer();
+        e.Handled = true;
+    }
+
+    private void PaneResizer_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_resizingPane)
+        {
+            return;
+        }
+
+        _resizingPane = false;
+        ((UIElement)sender).ReleasePointerCapture(e.Pointer);
+
+        var settings = App.Services.GetRequiredService<SettingsService>();
+        settings.Current.NavigationPaneWidth = (int)NavView.OpenPaneLength;
+        settings.Save();
+        e.Handled = true;
+    }
+
+    private void PaneResizer_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        NavView.OpenPaneLength = DefaultPaneWidth;
+        UpdateResizer();
+
+        var settings = App.Services.GetRequiredService<SettingsService>();
+        settings.Current.NavigationPaneWidth = DefaultPaneWidth;
+        settings.Save();
     }
 
     /// <summary>为缺少名称的服务器条目补齐 /System/Info 中的 ServerName。</summary>
@@ -122,8 +243,14 @@ public sealed partial class MainWindow : Window
     {
         var settings = App.Services.GetRequiredService<SettingsService>();
         _suppressServerChange = true;
-        ServerBox.ItemsSource = settings.Current.Servers;
-        ServerBox.SelectedItem = settings.CurrentServer;
+        // 末项是内置的「TMDB 在线推荐」，已添加服务器的用户可直接切过去看在线海报墙
+        // 注意：选中项必须取自同一个列表实例，否则 ComboBox 匹配不到会显示空白
+        var options = settings.SourceOptions;
+        ServerBox.ItemsSource = options;
+        ServerBox.SelectedItem =
+            options.FirstOrDefault(o => o.Id == settings.CurrentSourceOption?.Id)
+            // 还没有任何服务器时，直接停在 TMDB 上（首页也正是 TMDB 内容）
+            ?? options.FirstOrDefault(o => o.IsTmdb);
         _suppressServerChange = false;
     }
 
@@ -133,12 +260,13 @@ public sealed partial class MainWindow : Window
         {
             return;
         }
-        if (ServerBox.SelectedItem is not ServerEntry server)
+        if (ServerBox.SelectedItem is not ContentSourceOption option)
         {
             return;
         }
         var settings = App.Services.GetRequiredService<SettingsService>();
-        if (settings.CurrentServer?.Id == server.Id)
+        // 选中项没变（含「已选中」与「切到空」）时不做任何跳转，避免首次填充下拉就触发导航
+        if (option.Id == settings.CurrentSourceOption?.Id)
         {
             return;
         }
@@ -146,14 +274,20 @@ public sealed partial class MainWindow : Window
         // 延迟到 ComboBox 事件处理完成后执行，避免在回调中切换页面导致 WinUI stowed exception 闪退
         DispatcherQueue.TryEnqueue(() =>
         {
-            settings.SwitchServer(server.Id);
+            settings.SetSourceMode(option.IsTmdb);
 
-            var api = App.Services.GetRequiredService<EmbyApiClient>();
-            api.Configure(server.Url, server.AccessToken);
+            // 切到某个服务器时同步切换 API 凭据；切到 TMDB 时保留当前服务器，
+            // 这样首页大图点「播放」仍能按片名在自己的媒体库里检索并播放。
+            if (option.Server is { } server)
+            {
+                settings.SwitchServer(server.Id);
+                var api = App.Services.GetRequiredService<EmbyApiClient>();
+                api.Configure(server.Url, server.AccessToken);
+            }
 
             var navigation = App.Services.GetRequiredService<NavigationService>();
             navigation.ShowShellNavigation(true);
-            navigation.NavigateTo<LibraryPage>();
+            navigation.NavigateTo<HomePage>();
         });
     }
 
@@ -177,6 +311,7 @@ public sealed partial class MainWindow : Window
         {
             NavView.SelectedItem = NavView.MenuItems.FirstOrDefault();
         }
+        UpdateResizer();
     }
 
     private void NavView_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
@@ -184,11 +319,11 @@ public sealed partial class MainWindow : Window
         var navigation = App.Services.GetRequiredService<NavigationService>();
         switch (args.InvokedItemContainer?.Tag as string)
         {
+            case "Home":
+                navigation.NavigateTo<HomePage>();
+                break;
             case "Library":
                 navigation.NavigateTo<LibraryPage>();
-                break;
-            case "Resume":
-                navigation.NavigateTo<ResumePage>();
                 break;
             case "Search":
                 navigation.NavigateTo<SearchPage>();

@@ -155,7 +155,7 @@ public sealed class EmbyApiClient : IDisposable
     {
         var url = $"/Users/{UserId}/Items?ParentId={parentId}&Recursive=true" +
                   $"&IncludeItemTypes={includeItemTypes}" +
-                  "&Fields=Overview,PrimaryImageAspectRatio,SortName,UserData" +
+                  "&Fields=Overview,Genres,CommunityRating,PrimaryImageAspectRatio,SortName,UserData" +
                   $"&ImageTypeLimit=1&SortBy={sortBy}&SortOrder={sortOrder}" +
                   $"&Limit={limit}";
         return await GetAsync<QueryResult<BaseItemDto>>(url, ct);
@@ -240,6 +240,15 @@ public sealed class EmbyApiClient : IDisposable
     {
         var tag = string.IsNullOrEmpty(imageTag) ? "" : $"&tag={Uri.EscapeDataString(imageTag)}";
         return $"{ServerUrl}/Items/{itemId}/Images/Primary?maxWidth={maxWidth}{tag}&api_key={Token}";
+    }
+
+    /// <summary>背景图请求宽度。海报墙大图按 1280px 拉取，全屏显示清晰且内存可控。</summary>
+    public const int BackdropWidth = 1280;
+
+    public string GetBackdropImageUrl(string itemId, string? imageTag, int maxWidth = BackdropWidth)
+    {
+        var tag = string.IsNullOrEmpty(imageTag) ? "" : $"&tag={Uri.EscapeDataString(imageTag)}";
+        return $"{ServerUrl}/Items/{itemId}/Images/Backdrop/0?maxWidth={maxWidth}{tag}&api_key={Token}";
     }
 
     public string BuildStreamUrl(string itemId, string mediaSourceId, string? playSessionId)
