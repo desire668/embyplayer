@@ -25,6 +25,23 @@ public static class ItemCardMapper
     public static string? TryGetPosterUrl(string itemId) =>
         PosterUrlByItemId.TryGetValue(itemId, out var url) ? url : null;
 
+    /// <summary>
+    /// itemId → 名称。详情页加载完写入，面包屑用它把页面栈里的「详情」换成影片名
+    /// （页面栈里只存了 itemId，拿不到标题）。
+    /// </summary>
+    private static readonly Dictionary<string, string> NameByItemId = new();
+
+    public static void RememberName(string itemId, string? name)
+    {
+        if (!string.IsNullOrWhiteSpace(itemId) && !string.IsNullOrWhiteSpace(name))
+        {
+            NameByItemId[itemId] = name!;
+        }
+    }
+
+    public static string? TryGetName(string? itemId) =>
+        itemId is not null && NameByItemId.TryGetValue(itemId, out var name) ? name : null;
+
     public static ResumeEpisode? TryGetResumeEpisode(string seriesId) =>
         ResumeEpisodeBySeriesId.TryGetValue(seriesId, out var ep) ? ep : null;
 

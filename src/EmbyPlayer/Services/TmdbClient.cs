@@ -1,4 +1,4 @@
-using System.Net.Http.Headers;
+﻿using System.Net.Http.Headers;
 using System.Text.Json;
 using EmbyPlayer.Models;
 
@@ -11,7 +11,18 @@ namespace EmbyPlayer.Services;
 /// </summary>
 public sealed class TmdbClient
 {
-    private const string BaseUrl = "https://api.themoviedb.org/3";
+    /// <summary>官方默认接口根地址；用户在设置页填了自定义地址时改用它。</summary>
+    private const string DefaultBaseUrl = "https://api.themoviedb.org/3";
+
+    private const string DefaultImageBaseUrl = "https://image.tmdb.org/t/p";
+
+    private const string DefaultImageProxy = "https://wsrv.nl/?url=";
+
+    /// <summary>实际接口根地址：设置页「外部服务」里可换成自建镜像 / 反代。</summary>
+    private string BaseUrl =>
+        string.IsNullOrWhiteSpace(_settings.Current.TmdbBaseUrl)
+            ? DefaultBaseUrl
+            : _settings.Current.TmdbBaseUrl!.Trim().TrimEnd('/');
 
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
@@ -29,21 +40,44 @@ public sealed class TmdbClient
 
     private string ApiKey =>
         _settings.Current.TmdbApiKey?.Trim()
-        ?? throw new InvalidOperationException("尚未配置 TMDB API Key，请在「设置 → 在线内容（TMDB）」中填写。");
+        ?? throw new InvalidOperationException("尚未配置 TMDB API Key，请在「设置 → 外部服务」中填写。");
 
     /// <summary>海报墙大图请求宽度，与 EmbyApiClient.BackdropWidth 对齐。</summary>
     public const int BackdropWidth = 1280;
 
-    /// <summary>拼 TMDB 图片 CDN 地址；path 为空返回 null。</summary>
-    public static string? GetImageUrl(string? path, int width = BackdropWidth) =>
-        string.IsNullOrEmpty(path) ? null : $"https://image.tmdb.org/t/p/w{width}{path}";
+    /// <summary>拼 TMDB 图片 CDN 地址；path 为空返回 null。图片前缀可在设置页换成镜像。</summary>
+    public string? GetImageUrl(string? path, int width = BackdropWidth)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return null;
+        }
+
+        var imageBase = string.IsNullOrWhiteSpace(_settings.Current.TmdbImageBaseUrl)
+            ? DefaultImageBaseUrl
+            : _settings.Current.TmdbImageBaseUrl!.Trim().TrimEnd('/');
+        return $"{imageBase}/w{width}{path}";
+    }
 
     /// <summary>
-    /// 图片备用地址：走公共图片代理 images.weserv.nl。
+    /// 图片备用地址：走公共图片代理（默认 wsrv.nl）。
     /// 国内直连 image.tmdb.org 常被拦（TLS 握手失败），主图源加载失败时用它兜底。
     /// </summary>
-    public static string? GetFallbackImageUrl(string? path, int width = BackdropWidth) =>
-        string.IsNullOrEmpty(path) ? null : $"https://wsrv.nl/?url=image.tmdb.org/t/p/w{width}{path}";
+    public string? GetFallbackImageUrl(string? path, int width = BackdropWidth)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return null;
+        }
+
+        var proxy = string.IsNullOrWhiteSpace(_settings.Current.ImageProxyBaseUrl)
+            ? DefaultImageProxy
+            : _settings.Current.ImageProxyBaseUrl!.Trim();
+        var imageBase = string.IsNullOrWhiteSpace(_settings.Current.TmdbImageBaseUrl)
+            ? DefaultImageBaseUrl
+            : _settings.Current.TmdbImageBaseUrl!.Trim().TrimEnd('/');
+        return $"{proxy}{imageBase}/w{width}{path}";
+    }
 
     /// <summary>本周热门电影（zh-CN），海报墙轮播数据源。</summary>
     public async Task<List<TmdbMovie>> GetTrendingAsync(CancellationToken ct = default)
@@ -53,11 +87,71 @@ public sealed class TmdbClient
         return response.Results;
     }
 
+    /// <summary>受欢迎的电影（zh-CN），首页「受欢迎的影片」一行的数据源。</summary>
+    public async Task<List<TmdbMovie>> GetPopularAsync(CancellationToken ct = default)
+    {
+        var url = $"{BaseUrl}/movie/popular?language=zh-CN";
+        var response = await GetAsync<TmdbPagedResponse<TmdbMovie>>(url, ct);
+        return response.Results;
+    }
+
+    /// <summary>
+    /// 取条目在 IMDb 的 id（external_ids）。Emby 里不少条目只刮到 TMDB id，
+    /// 没有 IMDb id 就查不了 IMDb / Trakt 评分，这里补一次。
+    /// </summary>
+    public async Task<string?> GetImdbIdAsync(string kind, string tmdbId, CancellationToken ct = default)
+    {
+        var url = $"{BaseUrl}/{kind}/{Uri.EscapeDataString(tmdbId)}/external_ids";
+        var dto = await GetAsync<TmdbExternalIds>(url, ct);
+        return string.IsNullOrWhiteSpace(dto.ImdbId) ? null : dto.ImdbId;
+    }
+
+    /// <summary>按片名（+年份）搜索：条目完全没有 provider id 时的兜底。</summary>
+    public async Task<TmdbMovie?> SearchAsync(string name, int? year, bool isTv, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
+        var kind = isTv ? "tv" : "movie";
+        var url = $"{BaseUrl}/search/{kind}?language=zh-CN&query={Uri.EscapeDataString(name)}"
+                  + (year is int y and > 0 ? $"&year={y}" : "");
+        var response = await GetAsync<TmdbPagedResponse<TmdbMovie>>(url, ct);
+        return response.Results.FirstOrDefault();
+    }
+
     /// <summary>电影详情（补片长与类型名，zh-CN）。</summary>
     public async Task<TmdbMovieDetail?> GetMovieDetailAsync(int movieId, CancellationToken ct = default)
     {
         var url = $"{BaseUrl}/movie/{movieId}?language=zh-CN";
         return await GetAsync<TmdbMovieDetail>(url, ct);
+    }
+
+    /// <summary>
+    /// 按 TMDB 自己的 id 取评分。<paramref name="kind"/> 为 "movie" 或 "tv"
+    /// （剧集用 tv，两者评分字段相同）。没有评分时返回 null。
+    /// </summary>
+    public async Task<TmdbRating?> GetRatingAsync(string kind, string tmdbId, CancellationToken ct = default)
+    {
+        var url = $"{BaseUrl}/{kind}/{Uri.EscapeDataString(tmdbId)}?language=zh-CN";
+        var detail = await GetAsync<TmdbMovieDetail>(url, ct);
+        return detail.VoteAverage is double vote and > 0
+            ? new TmdbRating(detail.Id, vote, detail.VoteCount ?? 0)
+            : null;
+    }
+
+    /// <summary>用 IMDb id 反查 TMDB 条目并带回评分（Emby 里常常只刮到 IMDb id）。</summary>
+    public async Task<TmdbRating?> FindByImdbAsync(string imdbId, bool isTv, CancellationToken ct = default)
+    {
+        var url = $"{BaseUrl}/find/{Uri.EscapeDataString(imdbId)}?external_source=imdb_id&language=zh-CN";
+        var found = await GetAsync<TmdbFindResponse>(url, ct);
+        var match = (isTv ? found.TvResults : found.MovieResults).FirstOrDefault()
+                    ?? found.MovieResults.FirstOrDefault()
+                    ?? found.TvResults.FirstOrDefault();
+        return match is { VoteAverage: double vote and > 0 }
+            ? new TmdbRating(match.Id, vote, match.VoteCount ?? 0)
+            : null;
     }
 
     /// <summary>

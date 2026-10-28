@@ -17,6 +17,16 @@ public sealed class NavigationService
         where TPage : Page =>
         Frame?.Navigate(typeof(TPage), parameter, transition);
 
+    /// <summary>
+    /// 顶层导航（侧栏、分类跳转）：进页面后清空页面栈，
+    /// 这样面包屑反映的是「从哪个页面钻进子页面」，不会堆积一路的历史。
+    /// </summary>
+    public void NavigateToRoot<TPage>(object? parameter = null) where TPage : Page
+    {
+        NavigateTo<TPage>(parameter);
+        Frame?.BackStack.Clear();
+    }
+
     /// <summary>页面栈里是否还有上一页（添加服务器页据此决定「返回」是回退还是直接回首页）。</summary>
     public bool CanGoBack => Frame?.CanGoBack == true;
 

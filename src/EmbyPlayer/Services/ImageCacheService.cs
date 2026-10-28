@@ -1,5 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Net.Http;
+using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 
@@ -30,6 +34,9 @@ public static class ImageCacheService
     private static readonly object Gate = new();
     private static readonly Dictionary<string, LinkedListNode<Entry>> Index = new();
     private static readonly LinkedList<Entry> Lru = new();
+
+    /// <summary>把远程图片顺势存一份到磁盘缓存目录（只负责下载，失败就下次再说）。</summary>
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
 
     private sealed class Entry
     {
@@ -65,12 +72,15 @@ public static class ImageCacheService
             }
         }
 
+        // 磁盘缓存命中：直接读本地文件，零网络；没命中就照旧从远程加载，并在后台存一份
+        var disk = DiskHit(url);
+
         BitmapImage image;
         try
         {
             image = new BitmapImage
             {
-                UriSource = new Uri(url),
+                UriSource = new Uri(disk ?? url),
                 // 大图用途（如详情页背景）按接近原始尺寸解码，避免放大后糊成一片
                 DecodePixelWidth = decodeWidth ?? DecodeWidth,
                 DecodePixelType = DecodePixelType.Logical,
@@ -82,9 +92,14 @@ public static class ImageCacheService
             return null;
         }
 
-        if (!string.IsNullOrEmpty(fallbackUrl))
+        if (disk is null)
         {
-            AttachFallback(image, fallbackUrl!);
+            if (!string.IsNullOrEmpty(fallbackUrl))
+            {
+                AttachFallback(image, fallbackUrl!);
+            }
+
+            ScheduleDiskCache(url);
         }
 
         lock (Gate)
@@ -114,6 +129,61 @@ public static class ImageCacheService
         }
     }
 
+    /// <summary>磁盘缓存里已有这张图就返回本地路径，否则 null。</summary>
+    private static string? DiskHit(string url)
+    {
+        try
+        {
+            var path = Path.Combine(CacheService.DirectoryOf(CacheKind.Images), CacheService.PathFor(url, ".img"));
+            return File.Exists(path) && new FileInfo(path).Length > 0 ? path : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>后台把远程图片存进磁盘缓存，并按上限淘汰最旧的。</summary>
+    private static void ScheduleDiskCache(string url)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var response = await Http.GetAsync(url);
+                if (!response.IsSuccessStatusCode)
+                {
+                    return;
+                }
+
+                var path = Path.Combine(CacheService.DirectoryOf(CacheKind.Images), CacheService.PathFor(url, ".img"));
+                var temp = path + ".tmp";
+                await using (var fs = File.Create(temp))
+                {
+                    await response.Content.CopyToAsync(fs);
+                }
+
+                File.Move(temp, path, true);
+                TrimDisk();
+            }
+            catch
+            {
+                // 下载失败 / 目录不可写：不影响显示，下次再试
+            }
+        });
+    }
+
+    private static void TrimDisk()
+    {
+        var settings = App.Services?.GetService<SettingsService>();
+        if (settings is null)
+        {
+            return;
+        }
+
+        CacheService.Trim(CacheKind.Images, CacheService.ToBytes(settings.Current.ImageCacheLimitMb));
+    }
+
     /// <summary>
     /// 主地址加载失败时切到备用地址（TMDB 图片在国内直连常被拦，改用镜像兜底）。
     /// 只切一次——已指向备用地址时不再处理，避免失败后无限重试。
@@ -136,7 +206,7 @@ public static class ImageCacheService
         };
     }
 
-    /// <summary>清空缓存（切换服务器 / 重新登录时调用，避免串图）。</summary>
+    /// <summary>清空缓存（切换服务器 / 重新登录 / 缓存页点清理时调用，避免串图）。</summary>
     public static void Clear()
     {
         lock (Gate)
@@ -144,5 +214,7 @@ public static class ImageCacheService
             Lru.Clear();
             Index.Clear();
         }
+
+        CacheService.Clear(CacheKind.Images);
     }
 }

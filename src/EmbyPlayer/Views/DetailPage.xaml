@@ -2,7 +2,7 @@
     x:Class="EmbyPlayer.Views.DetailPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:models="using:EmbyPlayer.Models">
+    xmlns:vm="using:EmbyPlayer.ViewModels">
 
     <Grid Background="{ThemeResource DetailPageBackground}">
         <Grid.RowDefinitions>
@@ -19,7 +19,7 @@
             <Image Source="{x:Bind ViewModel.BackdropSource, Mode=OneWay}"
                    Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center" />
             <Rectangle Fill="{ThemeResource DetailBackdropScrim}" />
-            <!-- 顶部再压一层浅渐变，让返回按钮与标题更清楚 -->
+            <!-- 顶部再压一层浅渐变，让面包屑与标题更清楚 -->
             <Rectangle>
                 <Rectangle.Fill>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
@@ -33,11 +33,9 @@
         </Grid>
 
         <ScrollViewer x:Name="RootScroll" Grid.RowSpan="2" ViewChanged="RootScroll_ViewChanged">
-            <StackPanel Padding="24" Spacing="16" MaxWidth="1000" HorizontalAlignment="Left">
-
-                <Button Click="BackButton_Click" ToolTipService.ToolTip="返回">
-                    <SymbolIcon Symbol="Back" />
-                </Button>
+            <!-- 页面整窗铺满（背景大图铺到标题栏和左边，见 MainWindow.ContentFrame_Navigated），
+                 所以内容自己让开：左侧 76（侧栏）+24，顶部 40（标题栏）+52 -->
+            <StackPanel Padding="100,92,24,24" Spacing="16" MaxWidth="1000" HorizontalAlignment="Left">
 
                 <Grid ColumnSpacing="24">
                     <Grid.ColumnDefinitions>
@@ -54,28 +52,126 @@
                                ImageOpened="DetailPoster_ImageOpened" />
                     </Border>
 
-                    <StackPanel x:Name="InfoPanel" Grid.Column="1" Spacing="12" VerticalAlignment="Top">
-                        <TextBlock Text="{x:Bind ViewModel.Item.Name, Mode=OneWay}"
-                                   FontSize="32" FontWeight="Bold" TextWrapping="Wrap" />
-                        <TextBlock Text="{x:Bind ViewModel.MetaText, Mode=OneWay}" FontSize="14" Opacity="0.7" />
+                    <!-- 高度锁在海报高度（330）：简介再长也不会撑出海报底边，
+                         放不下的部分在简介区自己滚动 -->
+                    <Grid x:Name="InfoPanel" Grid.Column="1" Height="330"
+                          VerticalAlignment="Top" RowSpacing="6">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
 
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <Button Content="{x:Bind ViewModel.PlayButtonText, Mode=OneWay}"
-                                    Style="{StaticResource AccentButtonStyle}" MinWidth="160"
-                                    Command="{x:Bind ViewModel.PlayCommand}" />
-                            <Button Content="{x:Bind ViewModel.FavoriteButtonText, Mode=OneWay}"
-                                    Command="{x:Bind ViewModel.ToggleFavoriteCommand}" />
-                            <ProgressRing IsActive="{x:Bind ViewModel.IsPreparingPlayback, Mode=OneWay}" />
+                        <StackPanel Grid.Row="0" Spacing="12">
+                            <TextBlock Text="{x:Bind ViewModel.Item.Name, Mode=OneWay}"
+                                       FontSize="32" FontWeight="Bold" TextWrapping="Wrap" />
+                            <TextBlock Text="{x:Bind ViewModel.MetaText, Mode=OneWay}" FontSize="14" Opacity="0.7" />
+
+                            <!-- 第三方评分：TMDB / IMDb / Trakt，取不到的源不显示 -->
+                            <ItemsControl ItemsSource="{x:Bind ViewModel.Ratings, Mode=OneWay}"
+                                          Visibility="{x:Bind ViewModel.RatingsVisibility, Mode=OneWay}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:RatingChip">
+                                        <Border Background="{ThemeResource RatingChipBackground}"
+                                                CornerRadius="8" Padding="10,4" Margin="0,0,8,0"
+                                                ToolTipService.ToolTip="{x:Bind Tooltip}">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Text="{x:Bind Source}" FontSize="12" Opacity="0.6"
+                                                           VerticalAlignment="Center" />
+                                                <TextBlock Text="{x:Bind Value}" FontSize="14" FontWeight="SemiBold"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <!-- TMDB 在线条目没有片源：播放 / 播放源 / 收藏整排不显示 -->
+                                <StackPanel Orientation="Horizontal" Spacing="12"
+                                            Visibility="{x:Bind ViewModel.PlayVisibility, Mode=OneWay}">
+                                    <Button Content="{x:Bind ViewModel.PlayButtonText, Mode=OneWay}"
+                                            Style="{StaticResource AccentButtonStyle}" MinWidth="160"
+                                            Command="{x:Bind ViewModel.PlayCommand}" />
+                                    <!-- 播放源：一台以上服务器时才出现，选谁就用谁的片源播 -->
+                                    <Button Content="{x:Bind ViewModel.PlaybackSourceText, Mode=OneWay}"
+                                            Visibility="{x:Bind ViewModel.PlaybackSourceVisibility, Mode=OneWay}"
+                                            ToolTipService.ToolTip="切换用哪台服务器播放"
+                                            Click="PlaySourceButton_Click" />
+                                    <Button Content="{x:Bind ViewModel.FavoriteButtonText, Mode=OneWay}"
+                                            Command="{x:Bind ViewModel.ToggleFavoriteCommand}" />
+                                </StackPanel>
+                                <ProgressRing IsActive="{x:Bind ViewModel.IsPreparingPlayback, Mode=OneWay}" />
+                            </StackPanel>
+
+                            <!-- 只有 TMDB 在线条目才有：说明这是在线信息、库里没有片源 -->
+                            <TextBlock Text="{x:Bind ViewModel.TmdbNotice, Mode=OneWay}"
+                                       Visibility="{x:Bind ViewModel.TmdbNoticeVisibility, Mode=OneWay}"
+                                       FontSize="13" Opacity="0.75" TextWrapping="Wrap" />
+
+                            <!-- 影片分类：点一下就去媒体库看同类 -->
+                            <ItemsControl ItemsSource="{x:Bind ViewModel.Genres, Mode=OneWay}"
+                                          Visibility="{x:Bind ViewModel.GenresVisibility, Mode=OneWay}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:GenreChip">
+                                        <Button Content="{x:Bind Name}" Tag="{x:Bind}"
+                                                Click="GenreChip_Click"
+                                                Margin="0,0,8,0" Padding="12,3"
+                                                CornerRadius="12" FontSize="12"
+                                                Background="{ThemeResource GenreChipBackground}"
+                                                BorderThickness="0"
+                                                ToolTipService.ToolTip="在媒体库中查看同分类" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <!-- 媒体信息：分类下方、简介上方。只显示分辨率 / 码率 / 大小 -->
+                            <ItemsControl ItemsSource="{x:Bind ViewModel.MediaChips, Mode=OneWay}"
+                                          Visibility="{x:Bind ViewModel.MediaInfoVisibility, Mode=OneWay}"
+                                          Margin="0,4,0,0">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="10" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:MediaChip">
+                                        <Border Background="{ThemeResource RatingChipBackground}"
+                                                CornerRadius="8" Padding="10,4"
+                                                ToolTipService.ToolTip="{x:Bind Value}">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Text="{x:Bind Label}" FontSize="12" Opacity="0.6"
+                                                           VerticalAlignment="Center" />
+                                                <TextBlock Text="{x:Bind Value}" FontSize="13" FontWeight="SemiBold"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <TextBlock Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                       TextWrapping="Wrap" />
                         </StackPanel>
 
-                        <TextBlock Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" FontSize="13" Opacity="0.8" />
-                        <TextBlock Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
-                                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                                   TextWrapping="Wrap" />
-
-                        <TextBlock Text="{x:Bind ViewModel.Item.Overview, Mode=OneWay}"
-                                   TextWrapping="Wrap" LineHeight="20" Opacity="0.85" Margin="0,8,0,0" />
-                    </StackPanel>
+                        <!-- 简介：只在海报底边以上滚动，不把整页撑长 -->
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      Padding="0,0,8,0">
+                            <TextBlock Text="{x:Bind ViewModel.Item.Overview, Mode=OneWay}"
+                                       TextWrapping="Wrap" LineHeight="20" Opacity="0.85" />
+                        </ScrollViewer>
+                    </Grid>
                 </Grid>
 
                 <StackPanel x:Name="EpisodePanel" Spacing="12"
@@ -85,24 +181,51 @@
                               ItemsSource="{x:Bind ViewModel.Seasons, Mode=OneWay}"
                               SelectedItem="{x:Bind ViewModel.SelectedSeason, Mode=TwoWay}" />
 
-                    <ListView ItemsSource="{x:Bind ViewModel.Episodes, Mode=OneWay}"
+                    <!-- 每集带截图 + 集号 + 时长 + 简介 -->
+                    <ListView ItemsSource="{x:Bind ViewModel.EpisodeRows, Mode=OneWay}"
                               SelectionMode="None" IsItemClickEnabled="True"
                               ItemClick="Episodes_ItemClick">
                         <ListView.ItemTemplate>
-                            <DataTemplate x:DataType="models:BaseItemDto">
-                                <Grid Padding="8,10" ColumnSpacing="16" Background="Transparent">
+                            <DataTemplate x:DataType="vm:EpisodeRow">
+                                <Grid Padding="4,8" ColumnSpacing="14" Background="Transparent">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="36" />
+                                        <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{x:Bind IndexNumberText}" Opacity="0.7" />
-                                    <TextBlock Grid.Column="1" Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Grid.Column="2" Text="{x:Bind RuntimeText}" Opacity="0.7" />
-                                    <TextBlock Grid.Column="3" Text="✓" FontWeight="Bold"
-                                               Foreground="#FF66BB6A"
-                                               Visibility="{x:Bind WatchedVisibility}" />
+
+                                    <!-- 截图：没有截图时用集号占位 -->
+                                    <Border Width="176" Height="99" CornerRadius="6"
+                                            Background="#33222222" VerticalAlignment="Top">
+                                        <Grid>
+                                            <TextBlock Text="{x:Bind NumberText}"
+                                                       Visibility="{x:Bind PlaceholderVisibility}"
+                                                       Opacity="0.45" FontSize="15"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            <Image Source="{x:Bind Thumbnail}"
+                                                   Stretch="UniformToFill"
+                                                   Visibility="{x:Bind ThumbnailVisibility}" />
+                                        </Grid>
+                                    </Border>
+
+                                    <StackPanel Grid.Column="1" Spacing="5" VerticalAlignment="Top" Margin="0,2,0,0">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{x:Bind NumberText}" FontSize="12" Opacity="0.6"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Text="{x:Bind Name}" FontSize="14" FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis" MaxWidth="420"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Text="{x:Bind RuntimeText}" FontSize="12" Opacity="0.6"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Text="✓ 已看" FontSize="12" Foreground="#FF66BB6A"
+                                                       Visibility="{x:Bind WatchedVisibility}"
+                                                       VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <TextBlock Text="{x:Bind Overview}"
+                                                   Visibility="{x:Bind OverviewVisibility}"
+                                                   FontSize="12" Opacity="0.72"
+                                                   TextWrapping="Wrap" MaxLines="2"
+                                                   TextTrimming="CharacterEllipsis" LineHeight="18" />
+                                    </StackPanel>
                                 </Grid>
                             </DataTemplate>
                         </ListView.ItemTemplate>
@@ -129,6 +252,20 @@
                 <TextBlock x:Name="JumpLabel" Text="到底部" VerticalAlignment="Center" />
             </StackPanel>
         </Button>
+
+        <!-- 轻提示：播放已结束 / 已切换播放源这类一次性消息浮在这里显示，
+             几秒后自动淡出，不占页面布局（原来那行常驻状态文字已去掉） -->
+        <Border x:Name="Toast" Grid.RowSpan="2" Visibility="Collapsed"
+                HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                Margin="0,0,0,56" Padding="18,10" CornerRadius="12"
+                Background="{ThemeResource BreadcrumbFill}"
+                BorderBrush="{ThemeResource BreadcrumbStroke}" BorderThickness="1"
+                IsHitTestVisible="False" Opacity="0">
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="ToastShift" Y="10" />
+            </Border.RenderTransform>
+            <TextBlock x:Name="ToastText" FontSize="14" TextWrapping="Wrap" MaxWidth="520" />
+        </Border>
 
         <ContentDialog x:Name="SubtitleDialog" Title="选择字幕"
                        PrimaryButtonText="播放" SecondaryButtonText="取消" DefaultButton="Primary">

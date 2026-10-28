@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EmbyPlayer.Models;
 using EmbyPlayer.Services;
+using EmbyPlayer.Views;
 using Microsoft.UI.Xaml.Media;
 
 namespace EmbyPlayer.ViewModels;
@@ -16,6 +17,8 @@ public partial class DetailViewModel : ObservableObject
     private readonly PlaybackService _playback;
     private readonly DanmakuService _danmaku;
     private readonly SettingsService _settings;
+    private readonly RatingsService _ratings;
+    private readonly TmdbClient _tmdb;
     private readonly SynchronizationContext? _uiContext;
 
     private PlaybackPlan? _plan;
@@ -38,6 +41,101 @@ public partial class DetailViewModel : ObservableObject
 
     [ObservableProperty]
     private ObservableCollection<BaseItemDto> _episodes = new();
+
+    /// <summary>集列表的展示行（带缩略图与简介）。</summary>
+    [ObservableProperty]
+    private ObservableCollection<EpisodeRow> _episodeRows = new();
+
+    /// <summary>第三方评分胶囊（TMDB / IMDb / Trakt，取不到的源不显示）。</summary>
+    public ObservableCollection<RatingChip> Ratings { get; } = new();
+
+    [ObservableProperty]
+    private bool _hasRatings;
+
+    /// <summary>分类胶囊（点击跳转分类页）。</summary>
+    public ObservableCollection<GenreChip> Genres { get; } = new();
+
+    // ---------------- 播放源 ----------------
+
+    /// <summary>可切换的播放源（所有已添加的 Emby 服务器）。</summary>
+    public ObservableCollection<PlaybackSourceOption> PlaybackSources { get; } = new();
+
+    [ObservableProperty]
+    private PlaybackSourceOption? _selectedPlaybackSource;
+
+    /// <summary>只有一台服务器时没有可切换的，按钮没必要占位置。</summary>
+    [ObservableProperty]
+    private bool _hasMultiplePlaybackSources;
+
+    public string PlaybackSourceText =>
+        SelectedPlaybackSource is { } source ? $"播放源：{source.Name}" : "播放源";
+
+    partial void OnSelectedPlaybackSourceChanged(PlaybackSourceOption? value) =>
+        OnPropertyChanged(nameof(PlaybackSourceText));
+
+    public Microsoft.UI.Xaml.Visibility PlaybackSourceVisibility =>
+        HasMultiplePlaybackSources && !IsTmdbItem
+            ? Microsoft.UI.Xaml.Visibility.Visible
+            : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    partial void OnHasMultiplePlaybackSourcesChanged(bool value) =>
+        OnPropertyChanged(nameof(PlaybackSourceVisibility));
+
+    // ---------------- 媒体信息 ----------------
+
+    /// <summary>分辨率 / 码率 / 音轨语言 / 字幕语言等，进详情页时探测一次。</summary>
+    public ObservableCollection<MediaChip> MediaChips { get; } = new();
+
+    [ObservableProperty]
+    private bool _hasMediaInfo;
+
+    public Microsoft.UI.Xaml.Visibility MediaInfoVisibility =>
+        HasMediaInfo ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    partial void OnHasMediaInfoChanged(bool value) => OnPropertyChanged(nameof(MediaInfoVisibility));
+
+    /// <summary>播其它服务器的片子时用的独立客户端；换源 / 换片时释放。</summary>
+    private EmbyApiClient? _playbackClient;
+
+    // ---------------- TMDB 在线条目 ----------------
+
+    /// <summary>当前详情页展示的是 TMDB 在线条目（媒体库里没有）：不能播、不能收藏。</summary>
+    [ObservableProperty]
+    private bool _isTmdbItem;
+
+    [ObservableProperty]
+    private string _tmdbNotice = "";
+
+    public Microsoft.UI.Xaml.Visibility TmdbNoticeVisibility =>
+        string.IsNullOrWhiteSpace(TmdbNotice)
+            ? Microsoft.UI.Xaml.Visibility.Collapsed
+            : Microsoft.UI.Xaml.Visibility.Visible;
+
+    partial void OnTmdbNoticeChanged(string value) => OnPropertyChanged(nameof(TmdbNoticeVisibility));
+
+    /// <summary>播放 / 播放源 / 收藏：TMDB 在线条目没有片源，整排按钮隐藏。</summary>
+    public Microsoft.UI.Xaml.Visibility PlayVisibility =>
+        IsTmdbItem ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
+
+    partial void OnIsTmdbItemChanged(bool value)
+    {
+        OnPropertyChanged(nameof(PlayVisibility));
+        OnPropertyChanged(nameof(PlaybackSourceVisibility));
+    }
+
+    [ObservableProperty]
+    private int _genreCount;
+
+    public Microsoft.UI.Xaml.Visibility GenresVisibility =>
+        GenreCount > 0 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    partial void OnGenreCountChanged(int value) => OnPropertyChanged(nameof(GenresVisibility));
+
+    partial void OnHasRatingsChanged(bool value) =>
+        OnPropertyChanged(nameof(RatingsVisibility));
+
+    public Microsoft.UI.Xaml.Visibility RatingsVisibility =>
+        HasRatings ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 
     [ObservableProperty]
     private bool _isLoading;
@@ -110,13 +208,15 @@ public partial class DetailViewModel : ObservableObject
     }
 
     public DetailViewModel(EmbyApiClient api, NavigationService navigation, PlaybackService playback,
-        DanmakuService danmaku, SettingsService settings)
+        DanmakuService danmaku, SettingsService settings, RatingsService ratings, TmdbClient tmdb)
     {
         _api = api;
         _navigation = navigation;
         _playback = playback;
         _danmaku = danmaku;
         _settings = settings;
+        _ratings = ratings;
+        _tmdb = tmdb;
         _uiContext = SynchronizationContext.Current;
 
         _playback.StatusChanged += s => PostToUi(() => StatusText = s);
@@ -143,6 +243,10 @@ public partial class DetailViewModel : ObservableObject
             if (item.RunTimeTicks is long ticks && ticks > 0)
             {
                 parts.Add(FormatDuration(ticks));
+            }
+            if (!string.IsNullOrWhiteSpace(item.OfficialRating))
+            {
+                parts.Add(item.OfficialRating);
             }
             return string.Join(" · ", parts);
         }
@@ -208,6 +312,10 @@ public partial class DetailViewModel : ObservableObject
         IsLoading = true;
         ErrorMessage = null;
         BackdropSource = null;
+        MediaChips.Clear();
+        HasMediaInfo = false;
+        IsTmdbItem = false;
+        TmdbNotice = "";
 
         // 先用列表里已经解析过的海报 URL 顶上：命中缓存的话这一帧就能显示，
         // 不用等 GetItemAsync 回来，也不会出现「先空框、后蹦出图」。
@@ -217,6 +325,7 @@ public partial class DetailViewModel : ObservableObject
         {
             var item = await _api.GetItemAsync(itemId);
             Item = item;
+            ItemCardMapper.RememberName(item.Id, item.Name);
             IsFavorite = item.UserData?.IsFavorite == true;
             var primaryTag = item.ImageTags is not null && item.ImageTags.TryGetValue("Primary", out var tag)
                 ? tag : null;
@@ -230,6 +339,16 @@ public partial class DetailViewModel : ObservableObject
             OnPropertyChanged(nameof(MetaText));
             OnPropertyChanged(nameof(PlayButtonText));
             OnPropertyChanged(nameof(EpisodesVisibility));
+
+            ApplyGenres(item);
+            RefreshPlaybackSources();
+            // 评分要打外部接口，先让页面出内容，评分回来了再补上
+            _ = LoadRatingsAsync(item);
+            // 媒体信息（分辨率 / 码率 / 音轨 / 字幕）要问一次服务器，同样异步补
+            if (!IsSeries)
+            {
+                _ = LoadMediaInfoAsync(item.Id, item);
+            }
 
             if (item.Type == "Series")
             {
@@ -247,6 +366,289 @@ public partial class DetailViewModel : ObservableObject
         {
             IsLoading = false;
         }
+    }
+
+    /// <summary>
+    /// 打开 TMDB 在线条目：媒体库里没有这部片时，详情页照样用 TMDB 的数据渲染，
+    /// 不再跳到 the moviedb 网站。没有片源，所以播放 / 收藏一排按钮都不出现。
+    /// </summary>
+    public async Task LoadTmdbAsync(int tmdbId)
+    {
+        IsLoading = true;
+        ErrorMessage = null;
+        BackdropSource = null;
+        PosterSource = null;
+        MediaChips.Clear();
+        HasMediaInfo = false;
+        IsTmdbItem = true;
+        Ratings.Clear();
+        HasRatings = false;
+        Genres.Clear();
+        GenreCount = 0;
+        Seasons = new ObservableCollection<BaseItemDto>();
+        SelectedSeason = null;
+        Episodes = new ObservableCollection<BaseItemDto>();
+        EpisodeRows = new ObservableCollection<EpisodeRow>();
+        PlaybackSources.Clear();
+        HasMultiplePlaybackSources = false;
+        TmdbNotice = _settings.IsLoggedIn
+            ? "媒体库里没有这部片，下面是 TMDB 的在线信息。"
+            : "当前没有连接媒体服务器，下面是 TMDB 的在线信息。";
+
+        try
+        {
+            var detail = await _tmdb.GetMovieDetailAsync(tmdbId);
+            if (detail is null)
+            {
+                ErrorMessage = "没有取到这部片的在线信息。";
+                return;
+            }
+
+            int? year = detail.ReleaseDate?.Length >= 4 &&
+                        int.TryParse(detail.ReleaseDate[..4], out var parsedYear) ? parsedYear : null;
+
+            Item = new BaseItemDto
+            {
+                Id = $"tmdb:{tmdbId}",
+                Name = string.IsNullOrWhiteSpace(detail.Title) ? detail.OriginalTitle ?? "" : detail.Title!,
+                OriginalTitle = detail.OriginalTitle,
+                Type = "Movie",
+                Overview = detail.Overview,
+                ProductionYear = year,
+                RunTimeTicks = detail.Runtime is int minutes ? minutes * 600_000_000L : null,
+                Genres = detail.Genres.Select(g => g.Name).ToList(),
+                ProviderIds = new Dictionary<string, string> { ["Tmdb"] = tmdbId.ToString() }
+            };
+            ItemCardMapper.RememberName(Item.Id, Item.Name);
+            OnPropertyChanged(nameof(IsSeries));
+            OnPropertyChanged(nameof(IsMovie));
+            OnPropertyChanged(nameof(MetaText));
+            OnPropertyChanged(nameof(EpisodesVisibility));
+
+            if (!string.IsNullOrEmpty(detail.PosterPath))
+            {
+                PosterSource = ImageCacheService.Get(
+                    _tmdb.GetImageUrl(detail.PosterPath, EmbyApiClient.PosterWidth),
+                    _tmdb.GetFallbackImageUrl(detail.PosterPath, EmbyApiClient.PosterWidth));
+            }
+            if (!string.IsNullOrEmpty(detail.BackdropPath))
+            {
+                BackdropSource = ImageCacheService.Get(
+                    _tmdb.GetImageUrl(detail.BackdropPath, BackdropDecodeWidth),
+                    _tmdb.GetFallbackImageUrl(detail.BackdropPath, BackdropDecodeWidth));
+            }
+
+            ApplyGenres(Item);
+            if (detail.VoteAverage is double vote)
+            {
+                Ratings.Add(new RatingChip("TMDB", vote.ToString("0.0"),
+                    detail.VoteCount is int vc ? $"TMDB {vote:0.0} · {vc:N0} 人评分" : $"TMDB {vote:0.0}"));
+                HasRatings = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    /// <summary>把 Emby 的类型标签变成可点击的分类胶囊。</summary>
+    private void ApplyGenres(BaseItemDto item)
+    {
+        Genres.Clear();
+        foreach (var genre in item.Genres ?? new List<string>())
+        {
+            if (!string.IsNullOrWhiteSpace(genre))
+            {
+                Genres.Add(new GenreChip(genre));
+            }
+        }
+        GenreCount = Genres.Count;
+    }
+
+    /// <summary>
+    /// 刷新播放源列表。默认选中当前服务器；用户手动选过之后，只要那台服务器还在就保持原选择。
+    /// </summary>
+    private void RefreshPlaybackSources()
+    {
+        var servers = _settings.Current.Servers;
+        var previousId = SelectedPlaybackSource?.ServerId;
+
+        PlaybackSources.Clear();
+        foreach (var server in servers)
+        {
+            PlaybackSources.Add(new PlaybackSourceOption
+            {
+                ServerId = server.Id,
+                Name = server.DisplayName
+            });
+        }
+
+        HasMultiplePlaybackSources = PlaybackSources.Count > 1;
+
+        var keep = PlaybackSources.FirstOrDefault(s => s.ServerId == previousId);
+        SelectedPlaybackSource = keep
+            ?? PlaybackSources.FirstOrDefault(s => s.ServerId == _settings.CurrentServer?.Id)
+            ?? PlaybackSources.FirstOrDefault();
+    }
+
+    /// <summary>切换播放源：后续播放走选中的那台服务器。</summary>
+    [RelayCommand]
+    private void SelectPlaybackSource(PlaybackSourceOption? option)
+    {
+        if (option is null || option.ServerId == SelectedPlaybackSource?.ServerId)
+        {
+            return;
+        }
+        SelectedPlaybackSource = option;
+        StatusText = $"播放源已切换为：{option.Name}";
+    }
+
+    /// <summary>
+    /// 探测媒体信息：分辨率 / 码率 / 音轨语言 / 字幕语言。
+    /// 走 PlaybackInfo 但不真的开流（autoOpenLiveStream=false），拿到就补在标题下方。
+    /// </summary>
+    private async Task LoadMediaInfoAsync(string itemId, BaseItemDto item)
+    {
+        MediaChips.Clear();
+        HasMediaInfo = false;
+        try
+        {
+            var info = await _api.GetPlaybackInfoAsync(itemId, autoOpenLiveStream: false);
+            var source = info.MediaSources.FirstOrDefault();
+            if (source is null)
+            {
+                return;
+            }
+
+            // 探测是异步回来的：期间用户可能已经翻到别的片子
+            if (!ReferenceEquals(Item, item))
+            {
+                return;
+            }
+
+            foreach (var chip in BuildMediaChips(source))
+            {
+                MediaChips.Add(chip);
+            }
+            HasMediaInfo = MediaChips.Count > 0;
+        }
+        catch
+        {
+            // 媒体信息只是补充，取不到就不显示
+        }
+    }
+
+    /// <summary>详情页只放三项：分辨率 / 码率 / 大小。其余（编码、音轨、字幕、容器）不再显示。</summary>
+    private static List<MediaChip> BuildMediaChips(MediaSourceInfo source)
+    {
+        var chips = new List<MediaChip>();
+        var streams = source.MediaStreams ?? new List<MediaStreamInfo>();
+        var video = streams.FirstOrDefault(s => s.Type == "Video");
+
+        if (video?.Width is int w && video.Height is int h && w > 0 && h > 0)
+        {
+            chips.Add(new MediaChip("分辨率", $"{w}×{h}（{ResolutionLabel(h)}）"));
+        }
+
+        var bitrate = source.Bitrate ?? video?.BitRate;
+        if (bitrate is long bits and > 0)
+        {
+            chips.Add(new MediaChip("码率", $"{bits / 1_000_000.0:0.##} Mbps"));
+        }
+
+        if (source.Size is long size and > 0)
+        {
+            chips.Add(new MediaChip("大小", FormatSize(size)));
+        }
+
+        return chips;
+    }
+
+    /// <summary>文件体积：GB / MB / KB 三档，小文件保留一位小数，避免出现「0 MB」。</summary>
+    private static string FormatSize(long bytes)
+    {
+        const double kb = 1024d;
+        const double mb = kb * 1024;
+        const double gb = mb * 1024;
+        if (bytes >= gb)
+        {
+            return $"{bytes / gb:0.##} GB";
+        }
+        if (bytes >= mb)
+        {
+            return bytes / mb >= 100 ? $"{bytes / mb:0} MB" : $"{bytes / mb:0.#} MB";
+        }
+        return $"{Math.Max(1, bytes / kb):0} KB";
+    }
+
+    private static string ResolutionLabel(int height) => height switch
+    {
+        >= 2160 => "4K",
+        >= 1440 => "2K",
+        >= 1080 => "1080P",
+        >= 720 => "720P",
+        >= 480 => "480P",
+        _ => "SD"
+    };
+
+    /// <summary>拉第三方评分；拿不到的源直接跳过，全部拿不到时整行隐藏。</summary>
+    private async Task LoadRatingsAsync(BaseItemDto item)
+    {
+        Ratings.Clear();
+        HasRatings = false;
+        try
+        {
+            var info = await _ratings.GetAsync(item);
+            var chips = new List<RatingChip>();
+            if (info.Tmdb is double tmdb)
+            {
+                chips.Add(new RatingChip("TMDB", tmdb.ToString("0.0"),
+                    info.TmdbVotes is int tv ? $"TMDB {tmdb:0.0} · {tv:N0} 人评分" : $"TMDB {tmdb:0.0}"));
+            }
+            if (info.Imdb is double imdb)
+            {
+                chips.Add(new RatingChip("IMDb", imdb.ToString("0.0"),
+                    info.ImdbVotes is int iv ? $"IMDb {imdb:0.0} · {iv:N0} 人评分" : $"IMDb {imdb:0.0}"));
+            }
+            if (info.Trakt is double trakt)
+            {
+                chips.Add(new RatingChip("Trakt", trakt.ToString("0.0"),
+                    info.TrakVotes is int kv ? $"Trakt {trakt:0.0} · {kv:N0} 人评分" : $"Trakt {trakt:0.0}"));
+            }
+
+            // 评分是异步回来的：期间用户可能已经切到别的片子，别再回填
+            if (!ReferenceEquals(Item, item))
+            {
+                return;
+            }
+
+            foreach (var chip in chips)
+            {
+                Ratings.Add(chip);
+            }
+            HasRatings = chips.Count > 0;
+        }
+        catch
+        {
+            // 评分只是附加信息，失败就不显示
+        }
+    }
+
+    /// <summary>点分类胶囊：跳媒体库并按该类型过滤（电影进电影库，剧集进剧集库）。</summary>
+    [RelayCommand]
+    private void OpenGenre(GenreChip? chip)
+    {
+        if (chip is null || string.IsNullOrWhiteSpace(chip.Name))
+        {
+            return;
+        }
+        var collectionType = Item?.Type == "Series" ? "tvshows" : "movies";
+        _navigation.NavigateToRoot<LibraryPage>(new LibraryFilter(chip.Name, collectionType));
     }
 
     private async Task ReloadAsync()
@@ -278,6 +680,17 @@ public partial class DetailViewModel : ObservableObject
         {
             var episodes = await _api.GetEpisodesAsync(item.Id, season.Id);
             Episodes = new ObservableCollection<BaseItemDto>(episodes.Items);
+            EpisodeRows = new ObservableCollection<EpisodeRow>(episodes.Items.Select(e => new EpisodeRow
+            {
+                Item = e,
+                Thumbnail = BuildEpisodeThumbnail(e)
+            }));
+
+            // 剧集本身没有媒体源：拿本季第一集去探测，展示这部的画质与音轨信息
+            if (Item is not null && Episodes.FirstOrDefault() is { } first)
+            {
+                _ = LoadMediaInfoAsync(first.Id, Item);
+            }
         }
         catch (Exception ex)
         {
@@ -285,11 +698,30 @@ public partial class DetailViewModel : ObservableObject
         }
     }
 
+    /// <summary>单集截图：优先用 Emby 里该集的缩略图，没有就返回 null（界面显示集号占位）。</summary>
+    private ImageSource? BuildEpisodeThumbnail(BaseItemDto episode)
+    {
+        if (episode.ImageTags is null ||
+            !episode.ImageTags.TryGetValue("Primary", out var tag) ||
+            string.IsNullOrEmpty(tag))
+        {
+            return null;
+        }
+        const int width = 360;
+        return ImageCacheService.Get(_api.GetPrimaryImageUrl(episode.Id, tag, width), decodeWidth: width);
+    }
+
     [RelayCommand]
     private async Task PlayAsync()
     {
         if (Item is null)
         {
+            return;
+        }
+
+        if (IsTmdbItem)
+        {
+            ErrorMessage = "媒体库里没有这部片，没有可播放的片源。";
             return;
         }
 
@@ -327,7 +759,7 @@ public partial class DetailViewModel : ObservableObject
     private async Task ToggleFavoriteAsync()
     {
         var item = Item;
-        if (item is null)
+        if (item is null || IsTmdbItem)
         {
             return;
         }
@@ -349,7 +781,10 @@ public partial class DetailViewModel : ObservableObject
         IsPreparingPlayback = true;
         try
         {
-            _plan = await _playback.PrepareAsync(target);
+            var (playTarget, client) = await ResolvePlaybackTargetAsync(target);
+            _playbackClient?.Dispose();
+            _playbackClient = client;
+            _plan = await _playback.PrepareAsync(playTarget, client);
             var options = new List<SubtitleOption> { new(-1, "无字幕", null) };
             options.AddRange(_plan.SubtitleStreams.Select(s =>
                 new SubtitleOption(s.Index,
@@ -383,6 +818,53 @@ public partial class DetailViewModel : ObservableObject
             IsPreparingPlayback = false;
             _plan = null;
             ErrorMessage = ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// 决定这次播放实际用哪台服务器：
+    /// 选中的播放源就是当前服务器时直接用原条目；否则到那台服务器按片名找同名条目，
+    /// 并为它准备一个独立的 API 客户端（流地址与进度上报都走那边）。
+    /// </summary>
+    private async Task<(BaseItemDto Item, EmbyApiClient? Client)> ResolvePlaybackTargetAsync(BaseItemDto target)
+    {
+        var option = SelectedPlaybackSource;
+        if (option is null || option.ServerId == _settings.CurrentServer?.Id)
+        {
+            return (target, null);
+        }
+
+        var server = _settings.Current.Servers.FirstOrDefault(s => s.Id == option.ServerId);
+        if (server is null)
+        {
+            return (target, null);
+        }
+
+        var client = new EmbyApiClient(_settings);
+        client.Configure(server.Url, server.AccessToken, server.UserId);
+        try
+        {
+            var result = await client.SearchAsync(target.Name, 20);
+            var match = result.Items.FirstOrDefault(i =>
+                    string.Equals(i.Name, target.Name, StringComparison.OrdinalIgnoreCase))
+                ?? result.Items.FirstOrDefault(i =>
+                    i.Type == target.Type && i.IndexNumber == target.IndexNumber &&
+                    i.ParentIndexNumber == target.ParentIndexNumber)
+                ?? result.Items.FirstOrDefault();
+            if (match is null)
+            {
+                client.Dispose();
+                throw new InvalidOperationException($"「{server.DisplayName}」上没有找到《{target.Name}》。");
+            }
+
+            // 搜索结果缺 UserData 等字段，取完整条目才能拿到断点位置
+            var full = await client.GetItemAsync(match.Id);
+            return (full, client);
+        }
+        catch
+        {
+            client.Dispose();
+            throw;
         }
     }
 

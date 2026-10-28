@@ -9,6 +9,7 @@
     <Grid Padding="24,16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -79,7 +80,25 @@
             </StackPanel>
         </Grid>
 
-        <Grid Grid.Row="1">
+        <!-- 分类过滤条：从详情页点分类跳过来时出现 -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8"
+                    Margin="0,0,0,10" VerticalAlignment="Center"
+                    Visibility="{x:Bind ViewModel.FilterVisibility, Mode=OneWay}">
+            <Border Background="{ThemeResource GenreChipBackground}" CornerRadius="14"
+                    Padding="12,4">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="分类" FontSize="12" Opacity="0.6" VerticalAlignment="Center" />
+                    <TextBlock Text="{x:Bind ViewModel.GenreFilter, Mode=OneWay}"
+                               FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <Button Content="✕" Command="{x:Bind ViewModel.ClearGenreFilterCommand}"
+                            Padding="6,0" MinWidth="24" Height="24" CornerRadius="12"
+                            FontSize="11" Background="Transparent" BorderThickness="0"
+                            ToolTipService.ToolTip="清除分类过滤" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+
+        <Grid Grid.Row="2">
             <!-- 卡片入场由 FluidItems 逐张错峰驱动；悬停 / 按下动效在 PosterCard 内部 -->
             <GridView ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}"
                       SelectionMode="None" IsItemClickEnabled="True"

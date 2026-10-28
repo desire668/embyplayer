@@ -1,60 +1,186 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Window
     x:Class="EmbyPlayer.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:EmbyPlayer"
-    xmlns:models="using:EmbyPlayer.Models"
+    xmlns:views="using:EmbyPlayer.Views"
     Title="EmbyPlayer">
 
-    <Grid x:Name="Root">
-        <!-- PaneDisplayMode=Auto：窗口变窄时自动收成图标栏 / 抽屉，宽时展开 -->
-        <NavigationView x:Name="NavView" PaneDisplayMode="Auto"
-                        CompactModeThresholdWidth="640"
-                        ExpandedModeThresholdWidth="1008"
-                        IsBackButtonVisible="Collapsed" IsSettingsVisible="False"
-                        ItemInvoked="NavView_ItemInvoked"
-                        DisplayModeChanged="NavView_DisplayModeChanged">
-            <NavigationView.PaneHeader>
-                <Grid Margin="8,8,8,8">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <TextBlock Text="内容源" FontSize="12" Opacity="0.7" />
-                    <Grid Grid.Row="1" Margin="0,4,0,0" ColumnSpacing="4">
+    <Grid x:Name="Root" Background="{ThemeResource WindowBackground}">
+        <!-- 内容区整窗铺满：首页大图可以一直铺到窗口左边和顶部，侧栏悬浮在它上面 -->
+        <Frame x:Name="ContentFrame" />
+
+        <!-- ============ 自绘标题栏（完全透明）============
+             窗口不再画系统标题栏（左上角的应用图标和名字随之消失），
+             这里也不画任何东西：整条完全透明，页面内容直接透上来，
+             右上角缩小 / 全屏 / 关闭键的背景同样透明，所以它们看起来是浮在内容上的。
+             顶部 40px 由代码登记成可拖动区（见 UpdateDragRegion）。 -->
+
+        <!-- ============ 面包屑 ============
+             「首页 › 媒体库 › 影片名」，点任一级回到对应页面；
+             只在子页面（如详情页）显示，根页面自身不显示。
+             放在标题栏那 40px 之下：标题栏属于非客户区，落在里面会被当成拖动窗口而点不动。 -->
+        <Border x:Name="BreadcrumbHost"
+                Visibility="Collapsed"
+                HorizontalAlignment="Left" VerticalAlignment="Top"
+                Margin="88,48,0,0"
+                Padding="6,3"
+                CornerRadius="16"
+                Background="{ThemeResource BreadcrumbFill}"
+                BorderBrush="{ThemeResource BreadcrumbStroke}"
+                BorderThickness="1">
+            <BreadcrumbBar x:Name="Crumbs" ItemClicked="Crumbs_ItemClicked">
+                <BreadcrumbBar.ItemTemplate>
+                    <DataTemplate x:DataType="local:CrumbItem">
+                        <TextBlock Text="{x:Bind Title}" FontSize="13" />
+                    </DataTemplate>
+                </BreadcrumbBar.ItemTemplate>
+            </BreadcrumbBar>
+        </Border>
+
+        <!-- ============ 悬浮侧边栏 ============
+             不占布局宽度（浮在内容之上）；只有圆点本身参与命中测试；
+             鼠标移上去图标放大并在右侧显示文字。
+             主导航（首页 + 媒体库 胶囊、搜索、收藏）垂直居中；服务器与设置放左下角。 -->
+        <Grid x:Name="Rail" Margin="16,0,0,0"
+              HorizontalAlignment="Left" VerticalAlignment="Stretch">
+
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Left" Spacing="10">
+                <!-- 首页 + 媒体库：共用一个竖长胶囊外壳，两个按钮上下嵌在里面（各自隐去圆底）。
+                     外壳宽度 46，与单个圆形按钮同宽，不能比别的按钮胖；里面的按钮与滑块窄一些 -->
+                <Border Width="46" CornerRadius="23" Padding="3" HorizontalAlignment="Left"
+                        Background="{ThemeResource RailMicaFill}"
+                        BorderBrush="{ThemeResource RailGlossStroke}" BorderThickness="1">
+                    <Grid>
+                        <!-- 开关滑块：像拨杆一样在两个按钮之间滑过去，指示当前所在页面。
+                             两个按钮自己不画高亮，只留这个滑块（见 RailButton.InPill）。
+                             宽 38（两端半径 19 的半圆 + 中间竖直平行段），内边距 3 + 边框 1 = 到外壳四边都是 4 -->
+                        <Border x:Name="PillThumb" Width="38" Height="46" CornerRadius="19"
+                                HorizontalAlignment="Center" VerticalAlignment="Top"
+                                Background="{ThemeResource RailActiveTint}" IsHitTestVisible="False"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform>
+                                <TransformGroup>
+                                    <ScaleTransform x:Name="ThumbScale" ScaleX="1" ScaleY="1" />
+                                    <TranslateTransform x:Name="ThumbShift" Y="0" />
+                                </TransformGroup>
+                            </Border.RenderTransform>
+                        </Border>
+
+                        <StackPanel Orientation="Vertical" Spacing="2" HorizontalAlignment="Center">
+                            <views:RailButton x:Name="RailHome" Label="首页" Glyph="&#xE80F;"
+                                              InPill="True" Invoked="RailHome_Invoked" />
+                            <views:RailButton x:Name="RailLibrary" Label="媒体库" Glyph="&#xE8F1;"
+                                              InPill="True" Invoked="RailLibrary_Invoked" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <views:RailButton x:Name="RailSearch" Label="搜索" Glyph="&#xE721;"
+                                  Invoked="RailSearch_Invoked" />
+                <views:RailButton x:Name="RailFavorites" Label="收藏" Glyph="&#xE734;"
+                                  Invoked="RailFavorites_Invoked" />
+            </StackPanel>
+
+            <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Left"
+                        Margin="0,0,0,24" Spacing="10">
+                <views:RailButton x:Name="RailServers" Label="服务器" Glyph="&#xE774;"
+                                  Invoked="RailServers_Invoked" />
+                <views:RailButton x:Name="RailRefresh" Label="刷新" Glyph="&#xE72C;"
+                                  Invoked="RailRefresh_Invoked" />
+                <views:RailButton x:Name="RailSettings" Label="设置" Glyph="&#xE713;"
+                                  Invoked="RailSettings_Invoked" />
+            </StackPanel>
+        </Grid>
+
+        <!-- ============ 搜索弹层 ============
+             点侧栏「搜索」不再直接换页：先在图标右侧弹出一个胶囊输入框 +
+             搜索历史，输入完再按回车 / 点放大镜才真正进入搜索页。 -->
+        <Grid x:Name="SearchOverlay" Visibility="Collapsed">
+            <!-- 点空白处收起 -->
+            <Rectangle Fill="Transparent" PointerPressed="SearchBackdrop_PointerPressed" />
+
+            <StackPanel x:Name="SearchPanel" HorizontalAlignment="Left" VerticalAlignment="Top"
+                        Spacing="8" Margin="72,0,0,0">
+                <Border x:Name="SearchPill" Width="160" Height="46" CornerRadius="23"
+                        Background="{ThemeResource BreadcrumbFill}"
+                        BorderBrush="{ThemeResource BreadcrumbStroke}" BorderThickness="1"
+                        Padding="14,0">
+                    <Grid ColumnSpacing="6">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <ComboBox x:Name="ServerBox" Grid.Column="0"
-                                  MinWidth="120" HorizontalAlignment="Stretch"
-                                  DisplayMemberPath="DisplayName"
-                                  SelectionChanged="ServerBox_SelectionChanged" />
-                        <Button Grid.Column="1" Content="＋" Click="AddServer_Click"
-                                ToolTipService.ToolTip="添加服务器" />
+                        <TextBox x:Name="SearchInput" Grid.Column="0"
+                                 BorderThickness="0" Background="Transparent"
+                                 PlaceholderText="搜索" FontSize="15"
+                                 VerticalAlignment="Center"
+                                 KeyDown="SearchInput_KeyDown"
+                                 TextChanged="SearchInput_TextChanged">
+                            <TextBox.Resources>
+                                <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlElevationBorderBrush" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlElevationBorderFocusedBrush" Color="Transparent" />
+                            </TextBox.Resources>
+                        </TextBox>
+                        <Button x:Name="SearchGo" Grid.Column="1" Width="32" Height="32"
+                                Padding="0" CornerRadius="16" Background="Transparent"
+                                BorderThickness="0" Click="SearchGo_Click"
+                                ToolTipService.ToolTip="搜索">
+                            <FontIcon Glyph="&#xE721;" FontSize="15" />
+                        </Button>
                     </Grid>
-                </Grid>
-            </NavigationView.PaneHeader>
+                </Border>
 
-            <NavigationView.MenuItems>
-                <NavigationViewItem Content="首页" Tag="Home" Icon="Home" />
-                <NavigationViewItem Content="媒体库" Tag="Library" Icon="Video" />
-                <NavigationViewItem Content="搜索" Tag="Search" Icon="Find" />
-                <NavigationViewItem Content="收藏" Tag="Favorites" Icon="Favorite" />
-                <NavigationViewItem Content="设置" Tag="Settings" Icon="Setting" />
-            </NavigationView.MenuItems>
-            <Frame x:Name="ContentFrame" />
-        </NavigationView>
-
-        <!-- 左栏宽度拖拽条：贴在左栏右边缘的透明热区，只有左栏真正展开时才可用 -->
-        <local:PaneResizeGrip x:Name="PaneResizer" Width="8" HorizontalAlignment="Left"
-                VerticalAlignment="Stretch" Background="Transparent"
-                Visibility="Collapsed"
-                ToolTipService.ToolTip="拖动调整侧栏宽度，双击恢复默认"
-                PointerPressed="PaneResizer_PointerPressed"
-                PointerMoved="PaneResizer_PointerMoved"
-                PointerReleased="PaneResizer_PointerReleased"
-                PointerCanceled="PaneResizer_PointerReleased"
-                DoubleTapped="PaneResizer_DoubleTapped" />
+                <!-- 搜索历史：每行一个词，点词直接搜，点叉只删这一条 -->
+                <Border x:Name="SearchHistoryCard" Width="160" CornerRadius="14"
+                        Background="{ThemeResource BreadcrumbFill}"
+                        BorderBrush="{ThemeResource BreadcrumbStroke}" BorderThickness="1"
+                        Padding="12,10,12,12">
+                    <StackPanel Spacing="2">
+                        <Grid Margin="4,0,4,2">
+                            <TextBlock Text="搜索" FontSize="12" Opacity="0.55"
+                                       VerticalAlignment="Center" />
+                            <HyperlinkButton Content="清空" HorizontalAlignment="Right"
+                                             Padding="8,2" FontSize="12" Opacity="0.85"
+                                             Click="ClearSearchHistory_Click" />
+                        </Grid>
+                        <ItemsControl x:Name="SearchHistoryList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <Grid Height="38" Margin="0,2,0,0" CornerRadius="10"
+                                          Background="{ThemeResource GenreChipBackground}"
+                                          Tag="{x:Bind}" Tapped="SearchHistoryItem_Tapped">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{x:Bind}" Grid.Column="0"
+                                                   FontSize="15" Margin="14,0,0,0"
+                                                   VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <Button Grid.Column="1" Width="34" Height="34"
+                                                Padding="0" Margin="0,0,2,0"
+                                                CornerRadius="17" Background="Transparent"
+                                                BorderThickness="0"
+                                                Tag="{x:Bind}"
+                                                Click="RemoveHistoryItem_Click"
+                                                ToolTipService.ToolTip="删除这条记录">
+                                            <FontIcon Glyph="&#xE711;" FontSize="11" Opacity="0.7" />
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
     </Grid>
 </Window>

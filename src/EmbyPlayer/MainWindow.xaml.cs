@@ -1,40 +1,48 @@
-using EmbyPlayer.Models;
+﻿using EmbyPlayer.Models;
 using EmbyPlayer.Services;
+using EmbyPlayer.ViewModels;
 using EmbyPlayer.Views;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI;
 using Microsoft.UI.Input;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml.Navigation;
+using System.ComponentModel;
 using System.IO;
+using Windows.Foundation;
 using Windows.Graphics;
 using Windows.System;
 using Windows.UI;
 
 namespace EmbyPlayer;
 
-/// <summary>
-/// 侧栏宽度拖拽条：完全透明的热区，只在鼠标变成左右箭头光标时暴露自己。两个关键点：
-/// 1) WinUI3 里 UIElement.ProtectedCursor 是受保护成员，必须派生控件才能设置左右调整箭头光标；
-/// 2) 必须由这个 Grid 自己作为命中目标（Background 设 Transparent 才参与命中测试），
-///    若套一层子元素，指针会命中到没有光标的子元素，表现成"鼠标放上去没反应、也拖不动"。
-/// </summary>
-public sealed class PaneResizeGrip : Grid
+/// <summary>面包屑上的一节：标题 + 层级（0 是最外层）。</summary>
+public sealed class CrumbItem
 {
-    public PaneResizeGrip() =>
-        ProtectedCursor = InputSystemCursor.Create(InputSystemCursorShape.SizeWestEast);
+    public CrumbItem(string title, int depth)
+    {
+        Title = title;
+        Depth = depth;
+    }
+
+    public string Title { get; }
+
+    public int Depth { get; }
+
+    public override string ToString() => Title;
 }
 
 public sealed partial class MainWindow : Window
 {
-    /// <summary>侧栏宽度可拖动范围与默认值。</summary>
-    private const int MinPaneWidth = 180;
-    private const int MaxPaneWidth = 480;
-    private const int DefaultPaneWidth = 320;
+    /// <summary>非首页页面左侧给悬浮侧栏留出的宽度（圆点 44 + 左右边距）。</summary>
+    private const double RailInset = 76;
 
-    private bool _suppressServerChange;
-    private bool _resizingPane;
+    /// <summary>自绘标题栏条的高度，和 XAML 里 TitleBarHost 保持一致（TitleBarHeightOption.Tall）。</summary>
+    private const double TitleBarHeight = 40;
 
     public MainWindow()
     {
@@ -44,125 +52,518 @@ public sealed partial class MainWindow : Window
         navigation.Frame = ContentFrame;
         navigation.Shell = this;
 
+        ContentFrame.Navigated += ContentFrame_Navigated;
+
         AppWindow.Resize(new SizeInt32(1280, 800));
 
-        // 设置窗口标题栏图标
+        // 设置窗口标题栏图标（任务栏 / Alt+Tab 仍用得到；窗口左上角不再显示图标和名字）
         var iconPath = Path.Combine(AppContext.BaseDirectory, "app-icon.ico");
         if (File.Exists(iconPath))
         {
             AppWindow.SetIcon(iconPath);
         }
 
+        SetupCustomTitleBar();
+
         // 标题栏跟随应用主题：暗色纯黑、亮色白色，主题切换时同步刷新
-        // （Window 本身无 ActualTheme，借助根元素 NavView 的主题）
-        ApplyThemeTitleBar(NavView.ActualTheme);
-        NavView.ActualThemeChanged += (_, _) => ApplyThemeTitleBar(NavView.ActualTheme);
+        // （Window 本身无 ActualTheme，借助根元素的主题）
+        ApplyThemeTitleBar(Root.ActualTheme);
+        Root.ActualThemeChanged += (_, _) => ApplyThemeTitleBar(Root.ActualTheme);
 
-        var settings = App.Services.GetRequiredService<SettingsService>();
-        settings.ServersChanged += () => DispatcherQueue.TryEnqueue(RefreshServerBox);
-        RefreshServerBox();
+        // 设置页切换「颜色模式」后会 Save()，这里统一应用，避免各页面各自处理
+        var themeSettings = App.Services.GetRequiredService<SettingsService>();
+        ApplyThemeMode(themeSettings.Current.ThemeMode);
+        themeSettings.SettingsChanged += () =>
+            DispatcherQueue.TryEnqueue(() => ApplyThemeMode(themeSettings.Current.ThemeMode));
+
         _ = EnsureServerNamesAsync();
-
-        InitPaneResizer();
     }
 
     /// <summary>
-    /// 左栏宽度：先用记住的宽度，再挂上拖拽条。
-    /// NavigationView 自身用 PaneDisplayMode=Auto 按窗口宽度在「展开 / 图标栏 / 抽屉」间自适应，
-    /// 展开时用户可以拖动右边缘改宽，双击恢复默认，改动写回设置。
+    /// 自绘标题栏：内容延伸到窗口顶部（左上角的系统图标和应用名随之消失），
+    /// 顶部由 XAML 画一条云母横条，右上角三个系统按钮背景设为透明，透出这条云母。
     /// </summary>
-    private void InitPaneResizer()
+    private void SetupCustomTitleBar()
     {
-        var settings = App.Services.GetRequiredService<SettingsService>();
-        var width = settings.Current.NavigationPaneWidth;
-        if (width < MinPaneWidth || width > MaxPaneWidth)
+        try
         {
-            width = DefaultPaneWidth;
+            ExtendsContentIntoTitleBar = true;
+            AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
+
+            // 顶部那条登记为可拖动区（Caption），再把面包屑那一块登记为 Passthrough，
+            // 这样拖动窗口照常，面包屑的点击也能传回 XAML。
+            Root.SizeChanged += (_, _) =>
+            {
+                UpdateDragRegion();
+                if (SearchOverlay.Visibility == Visibility.Visible)
+                {
+                    PositionSearchPanel();
+                }
+            };
+            Root.Loaded += (_, _) => DispatcherQueue.TryEnqueue(UpdateDragRegion);
+            UpdateDragRegion();
         }
-
-        NavView.OpenPaneLength = width;
-
-        // 首帧布局完成时 DisplayMode 可能还是 Compact，只在 Loaded 里算一次会一直判成"不展开"，
-        // 所以窗口缩放 / 侧栏开合 / 布局变化都要重算（UpdateResizer 自身幂等，不会抖动）
-        NavView.SizeChanged += (_, _) => UpdateResizer();
-        NavView.LayoutUpdated += (_, _) => UpdateResizer();
-        UpdateResizer();
+        catch (Exception ex)
+        {
+            App.WriteCrashLog($"设置自绘标题栏失败：{ex}");
+        }
     }
 
-    /// <summary>拖拽条只在左栏真正展开（且侧栏可见）时贴在左栏右边缘，避免挡住内容点击。</summary>
-    private void UpdateResizer()
+    /// <summary>
+    /// 调整拖动条：面包屑显示时从它右边开始，面包屑那块留在客户区，点击照常生效；
+    /// 面包屑隐藏时整条顶部都能拖动。
+    /// </summary>
+    private void UpdateDragRegion()
     {
-        var visible = NavView.IsPaneVisible &&
-                      NavView.DisplayMode == NavigationViewDisplayMode.Expanded &&
-                      NavView.IsPaneOpen;
-
-        var target = visible ? Visibility.Visible : Visibility.Collapsed;
-        if (PaneResizer.Visibility != target)
+        try
         {
-            PaneResizer.Visibility = target;
+            var source = InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
+            var scale = Root.XamlRoot?.RasterizationScale ?? 1.0;
+            var width = (int)Math.Round(Root.ActualWidth * scale);
+            var height = (int)Math.Round(TitleBarHeight * scale);
+            if (width <= 0 || height <= 0)
+            {
+                return;
+            }
+
+            // 整条顶部都能拖动（面包屑在它下面，属于客户区，点击照常生效）
+            source.SetRegionRects(NonClientRegionKind.Caption, new[] { new RectInt32(0, 0, width, height) });
+        }
+        catch (Exception ex)
+        {
+            App.WriteCrashLog($"调整标题栏拖动区域失败：{ex}");
+        }
+    }
+
+    /// <summary>应用颜色模式：system 跟随 Windows，light / dark 强制覆盖（ThemeResource 会自动重取）。</summary>
+    private void ApplyThemeMode(string? mode) =>
+        Root.RequestedTheme = mode?.ToLowerInvariant() switch
+        {
+            "light" => ElementTheme.Light,
+            "dark" => ElementTheme.Dark,
+            _ => ElementTheme.Default
+        };
+
+    /// <summary>当前页面类型，用于空判断（首次导航前为 null）。</summary>
+    private Type? _currentPageType;
+
+    /// <summary>
+    /// 换页时同步侧栏高亮，并按页面决定内容区左边距：
+    /// 首页 / 登录页铺满整窗（侧栏浮在大图上），其余页面留出侧栏宽度，内容不会被圆点压住。
+    /// </summary>
+    private void ContentFrame_Navigated(object sender, NavigationEventArgs e)
+    {
+        _currentPageType = e.SourcePageType;
+        UpdateRailSelection();
+        // 换页时收起搜索弹层（在弹层里点搜索结果、或点侧栏其它按钮）
+        CloseSearchOverlay();
+
+        // 首页 / 登录页 / 详情页整窗铺满：背景大图一直铺到窗口顶部（标题栏透明，图上透上来）
+        // 和窗口左边（侧栏悬浮在图上）；
+        // 其余页面顶部让开标题栏条、左边让开侧栏，页面内容不会被它们盖住。
+        // 详情页的内容位置由页面自身的 Padding 让开（见 DetailPage.xaml），所以铺满后排版不变。
+        var fullBleed = e.SourcePageType == typeof(HomePage)
+            || e.SourcePageType == typeof(LoginPage)
+            || e.SourcePageType == typeof(DetailPage);
+        ContentFrame.Margin = fullBleed
+            ? new Thickness(0)
+            : new Thickness(RailInset, TitleBarHeight, 0, 0);
+
+        AttachDetailTracking();
+        UpdateBreadcrumb();
+
+    }
+
+    // ==================== 面包屑 ====================
+
+    /// <summary>当前跟踪的详情页 ViewModel（标题异步加载完成后再刷新一次面包屑）。</summary>
+    private DetailViewModel? _trackedDetail;
+
+    private void AttachDetailTracking()
+    {
+        if (_trackedDetail is not null)
+        {
+            _trackedDetail.PropertyChanged -= OnDetailPropertyChanged;
+            _trackedDetail = null;
+        }
+        if (ContentFrame.Content is DetailPage detail)
+        {
+            _trackedDetail = detail.ViewModel;
+            _trackedDetail.PropertyChanged += OnDetailPropertyChanged;
+        }
+    }
+
+    private void OnDetailPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(DetailViewModel.Item))
+        {
+            UpdateBreadcrumb();
+        }
+    }
+
+    /// <summary>
+    /// 用页面栈拼出「首页 › 媒体库 › 影片名」。根页面自身不显示（那里没有上一级，
+    /// 而且会压住页面标题）；子页面才显示，点任一级沿栈退回到对应页面。
+    /// </summary>
+    private void UpdateBreadcrumb()
+    {
+        var currentType = ContentFrame.CurrentSourcePageType;
+        if (currentType is null || !ContentFrame.CanGoBack || IsRootPage(currentType))
+        {
+            BreadcrumbHost.Visibility = Visibility.Collapsed;
+            return;
         }
 
-        if (!visible)
+        var titles = new List<string>();
+        foreach (var entry in ContentFrame.BackStack)
+        {
+            titles.Add(TitleFor(entry));
+        }
+        titles.Add(CurrentPageTitle(currentType));
+
+        // 相邻重复（例如首页 → 首页）合并掉，避免出现「首页 › 首页」
+        var items = new List<CrumbItem>();
+        foreach (var title in titles)
+        {
+            if (items.Count > 0 && items[^1].Title == title)
+            {
+                continue;
+            }
+            items.Add(new CrumbItem(title, items.Count));
+        }
+
+        Crumbs.ItemsSource = items;
+        _crumbItems = items;
+        BreadcrumbHost.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>当前面包屑的层级列表（BreadcrumbBar 只暴露 ItemsSource，这里自己留一份）。</summary>
+    private List<CrumbItem> _crumbItems = new();
+
+    private void Crumbs_ItemClicked(BreadcrumbBar sender, BreadcrumbBarItemClickedEventArgs args)
+    {
+        if (args.Item is not CrumbItem crumb)
         {
             return;
         }
 
-        // 拖拽条中心对准左栏右边缘（Width=8，所以左移半个身位）
-        var left = NavView.OpenPaneLength - 4;
-        if (Math.Abs(PaneResizer.Margin.Left - left) > 0.5)
+
+        // 当前页在最后一节，点第 depth 节就要退 (末级 - depth) 步
+        var steps = _crumbItems.Count - 1 - crumb.Depth;
+        var navigation = App.Services.GetRequiredService<NavigationService>();
+        for (var i = 0; i < steps && navigation.CanGoBack; i++)
         {
-            PaneResizer.Margin = new Thickness(left, 0, 0, 0);
+            navigation.GoBack();
         }
     }
 
-    private void NavView_DisplayModeChanged(NavigationView sender, NavigationViewDisplayModeChangedEventArgs args) =>
-        UpdateResizer();
+    private static bool IsRootPage(Type type) =>
+        type == typeof(HomePage) || type == typeof(LibraryPage) ||
+        type == typeof(FavoritesPage) || type == typeof(ServersPage) || type == typeof(SettingsPage) ||
+        type == typeof(LoginPage);
 
-    private void PaneResizer_PointerPressed(object sender, PointerRoutedEventArgs e)
+    /// <summary>路径的根节点用当前内容源的名字（例如「乐蛙」），比一律写「首页」更容易分清在看哪台服务器。</summary>
+    private string RootTitle()
     {
-        _resizingPane = true;
-        ((UIElement)sender).CapturePointer(e.Pointer);
-        e.Handled = true;
+        if (Settings.IsTmdbSource)
+        {
+            return "TMDB 在线推荐";
+        }
+        return Settings.CurrentServer?.DisplayName ?? "首页";
     }
 
-    private void PaneResizer_PointerMoved(object sender, PointerRoutedEventArgs e)
+    /// <summary>当前页标题：详情页取影片名（还没加载完时先用「详情」占位），搜索页带上是搜的什么词。</summary>
+    private string CurrentPageTitle(Type type)
     {
-        if (!_resizingPane)
+        if (ContentFrame.Content is DetailPage detail)
+        {
+            return detail.ViewModel.Item?.Name ?? "详情";
+        }
+        if (ContentFrame.Content is SearchPage search && !string.IsNullOrWhiteSpace(search.Query))
+        {
+            return SearchTitle(search.Query!);
+        }
+        return TitleFor(type);
+    }
+
+    private static string SearchTitle(string query) => $"搜索：{query}";
+
+    /// <summary>页面栈里的一节标题：详情页用记录的影片名（栈里只存了 itemId），搜索页用参数里的词。</summary>
+    private string TitleFor(PageStackEntry entry)
+    {
+        if (entry.SourcePageType == typeof(DetailPage))
+        {
+            var id = entry.Parameter as string;
+            if (id?.StartsWith("autoplay:", StringComparison.Ordinal) == true)
+            {
+                id = id["autoplay:".Length..];
+            }
+            return ItemCardMapper.TryGetName(id) ?? "详情";
+        }
+        if (entry.SourcePageType == typeof(SearchPage) && entry.Parameter is string query &&
+            !string.IsNullOrWhiteSpace(query))
+        {
+            return SearchTitle(query);
+        }
+        return TitleFor(entry.SourcePageType);
+    }
+
+    private string TitleFor(Type type)
+    {
+        if (type == typeof(HomePage)) return RootTitle();
+        if (type == typeof(LibraryPage)) return "媒体库";
+        if (type == typeof(SearchPage)) return "搜索";
+        if (type == typeof(FavoritesPage)) return "收藏";
+        if (type == typeof(ServersPage)) return "服务器";
+        if (type == typeof(SettingsPage)) return "设置";
+        if (type == typeof(ResumePage)) return "继续观看";
+        if (type == typeof(LoginPage)) return "登录";
+        if (type == typeof(DetailPage)) return "详情";
+        return "页面";
+    }
+
+    private void UpdateRailSelection()
+    {
+        RailHome.IsActive = _currentPageType == typeof(HomePage);
+        RailLibrary.IsActive = _currentPageType == typeof(LibraryPage);
+        RailSearch.IsActive = _currentPageType == typeof(SearchPage);
+        RailFavorites.IsActive = _currentPageType == typeof(FavoritesPage);
+        RailServers.IsActive = _currentPageType == typeof(ServersPage);
+        RailSettings.IsActive = _currentPageType == typeof(SettingsPage);
+
+        // 胶囊里的首页 / 媒体库靠滑块拨动来指示，不靠各自的高亮
+        MovePillThumb(_currentPageType == typeof(LibraryPage));
+    }
+
+    /// <summary>两档之间的行程：按钮 46 高 + 中间 2 间距。</summary>
+    private const double PillThumbTravel = 48.0;
+
+    private bool _pillThumbSet;
+
+    /// <summary>
+    /// 把胶囊里的滑块拨到首页（上）或媒体库（下）。
+    /// 滑动时先压扁一点再回弹，像拨动开关而不是两张图硬切；首次定位不带动画。
+    /// </summary>
+    private void MovePillThumb(bool toLibrary)
+    {
+        var target = toLibrary ? PillThumbTravel : 0.0;
+
+        if (!_pillThumbSet)
+        {
+            _pillThumbSet = true;
+            ThumbShift.Y = target;
+            return;
+        }
+
+        if (Math.Abs(ThumbShift.Y - target) < 0.5)
         {
             return;
         }
 
-        // Root 铺满窗口内容区，指针 X 即目标宽度
-        var x = e.GetCurrentPoint(Root).Position.X;
-        NavView.OpenPaneLength = Math.Clamp((int)Math.Round(x), MinPaneWidth, MaxPaneWidth);
-        UpdateResizer();
-        e.Handled = true;
+        AnimateTo(ThumbShift, "Y", target, 280, new CubicEase { EasingMode = EasingMode.EaseOut });
+
+        // 挤压回弹：中段压扁拉长，落位恢复
+        var squash = new DoubleAnimationUsingKeyFrames
+        {
+            EnableDependentAnimation = true
+        };
+        squash.KeyFrames.Add(new LinearDoubleKeyFrame { KeyTime = KeyTime.FromTimeSpan(TimeSpan.Zero), Value = 1 });
+        squash.KeyFrames.Add(new LinearDoubleKeyFrame { KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(110)), Value = 0.86 });
+        squash.KeyFrames.Add(new EasingDoubleKeyFrame
+        {
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(280)),
+            Value = 1,
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        });
+        Run(ThumbScale, "ScaleY", squash);
+
+        var stretch = new DoubleAnimationUsingKeyFrames { EnableDependentAnimation = true };
+        stretch.KeyFrames.Add(new LinearDoubleKeyFrame { KeyTime = KeyTime.FromTimeSpan(TimeSpan.Zero), Value = 1 });
+        stretch.KeyFrames.Add(new LinearDoubleKeyFrame { KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(110)), Value = 1.07 });
+        stretch.KeyFrames.Add(new EasingDoubleKeyFrame
+        {
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(280)),
+            Value = 1,
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        });
+        Run(ThumbScale, "ScaleX", stretch);
     }
 
-    private void PaneResizer_PointerReleased(object sender, PointerRoutedEventArgs e)
+    private static void AnimateTo(DependencyObject target, string property, double to, int milliseconds,
+        EasingFunctionBase? easing = null)
     {
-        if (!_resizingPane)
+        var animation = new DoubleAnimation
+        {
+            To = to,
+            Duration = new Duration(TimeSpan.FromMilliseconds(milliseconds)),
+            EasingFunction = easing,
+            EnableDependentAnimation = true
+        };
+
+        Run(target, property, animation);
+    }
+
+    private static void Run(DependencyObject target, string property, Timeline animation)
+    {
+        Storyboard.SetTarget(animation, target);
+        Storyboard.SetTargetProperty(animation, property);
+
+        var storyboard = new Storyboard();
+        storyboard.Children.Add(animation);
+        storyboard.Begin();
+    }
+
+    private void RailHome_Invoked(object? sender, EventArgs e) => Navigate<HomePage>();
+    private void RailLibrary_Invoked(object? sender, EventArgs e) => Navigate<LibraryPage>();
+    private void RailFavorites_Invoked(object? sender, EventArgs e) => Navigate<FavoritesPage>();
+    private void RailServers_Invoked(object? sender, EventArgs e) => Navigate<ServersPage>();
+    private void RailSettings_Invoked(object? sender, EventArgs e) => Navigate<SettingsPage>();
+
+    // ==================== 搜索弹层 ====================
+
+    private SettingsService Settings =>
+        _settings ??= App.Services.GetRequiredService<SettingsService>();
+
+    private SettingsService? _settings;
+
+    /// <summary>点侧栏「搜索」：不换页，先在图标右侧弹胶囊输入框 + 历史记录。</summary>
+    private void RailSearch_Invoked(object? sender, EventArgs e) => OpenSearchOverlay();
+
+    private void OpenSearchOverlay()
+    {
+        RefreshSearchHistory();
+        PositionSearchPanel();
+        SearchOverlay.Visibility = Visibility.Visible;
+        SearchInput.Text = "";
+        SearchInput.Focus(FocusState.Programmatic);
+    }
+
+    private void CloseSearchOverlay() => SearchOverlay.Visibility = Visibility.Collapsed;
+
+    /// <summary>
+    /// 弹层贴着搜索图标：左边从圆形图标右缘再让 10，竖直方向与图标居中。
+    /// 注意不能用 RailSearch.ActualWidth —— 它把悬停时才滑出的文字标签也算进去了，
+    /// 那样胶囊会被推到离图标很远的地方。
+    /// 窗口尺寸变化时重新算一次。
+    /// </summary>
+    private void PositionSearchPanel()
+    {
+        if (RailSearch.ActualWidth <= 0 || Root.ActualWidth <= 0)
         {
             return;
         }
 
-        _resizingPane = false;
-        ((UIElement)sender).ReleasePointerCapture(e.Pointer);
-
-        var settings = App.Services.GetRequiredService<SettingsService>();
-        settings.Current.NavigationPaneWidth = (int)NavView.OpenPaneLength;
-        settings.Save();
-        e.Handled = true;
+        const double iconSize = 46;
+        var origin = RailSearch.TransformToVisual(Root).TransformPoint(new Point(0, 0));
+        var top = origin.Y + Math.Max(0, (RailSearch.ActualHeight - iconSize) / 2);
+        SearchPanel.Margin = new Thickness(origin.X + iconSize + 10, top, 0, 0);
     }
 
-    private void PaneResizer_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    private void RefreshSearchHistory()
     {
-        NavView.OpenPaneLength = DefaultPaneWidth;
-        UpdateResizer();
+        var terms = Settings.Current.SearchHistory
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .ToList();
+        SearchHistoryList.ItemsSource = terms;
+        SearchHistoryCard.Visibility = terms.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
 
-        var settings = App.Services.GetRequiredService<SettingsService>();
-        settings.Current.NavigationPaneWidth = DefaultPaneWidth;
-        settings.Save();
+    /// <summary>输入完词按回车 / 点放大镜：记进历史，再真正进入搜索页。</summary>
+    private void PerformSearch(string? term)
+    {
+        var query = term?.Trim();
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            SearchInput.Focus(FocusState.Programmatic);
+            return;
+        }
+
+        Settings.RememberSearchTerm(query);
+        CloseSearchOverlay();
+        App.Services.GetRequiredService<NavigationService>().NavigateTo<SearchPage>(query);
+    }
+
+    private void SearchGo_Click(object sender, RoutedEventArgs e) => PerformSearch(SearchInput.Text);
+
+    private void SearchInput_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Enter)
+        {
+            e.Handled = true;
+            PerformSearch(SearchInput.Text);
+        }
+        else if (e.Key == VirtualKey.Escape)
+        {
+            e.Handled = true;
+            CloseSearchOverlay();
+        }
+    }
+
+    /// <summary>输入过程中把剩下的历史词过滤一下，方便直接点。</summary>
+    private void SearchInput_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        var typed = SearchInput.Text.Trim();
+        var terms = Settings.Current.SearchHistory
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Where(t => typed.Length == 0 || t.Contains(typed, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        SearchHistoryList.ItemsSource = terms;
+        SearchHistoryCard.Visibility = terms.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void SearchBackdrop_PointerPressed(object sender, PointerRoutedEventArgs e) =>
+        CloseSearchOverlay();
+
+    private void SearchHistoryItem_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string term })
+        {
+            e.Handled = true;
+            PerformSearch(term);
+        }
+    }
+
+    private void RemoveHistoryItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string term })
+        {
+            Settings.RemoveSearchTerm(term);
+            RefreshSearchHistory();
+        }
+    }
+
+    private void ClearSearchHistory_Click(object sender, RoutedEventArgs e)
+    {
+        Settings.ClearSearchHistory();
+        RefreshSearchHistory();
+    }
+
+    /// <summary>
+    /// 刷新：首页 / 媒体库是缓存的页面实例（来回切不重新加载），
+    /// 想拿到服务器上的最新内容就点这个按钮，强制重新拉一次。
+    /// </summary>
+    private async void RailRefresh_Invoked(object? sender, EventArgs e)
+    {
+        // 刷新要的是最新数据，先把元数据缓存丢掉，避免又命中旧响应
+        CacheService.Clear(CacheKind.Metadata);
+
+        if (ContentFrame.Content is IRefreshablePage page)
+        {
+            await page.RefreshAsync();
+        }
+    }
+
+    private static void Navigate<TPage>() where TPage : Page =>
+        App.Services.GetRequiredService<NavigationService>().NavigateToRoot<TPage>();
+
+    /// <summary>登录 / 添加服务器等全屏页面里把悬浮侧栏收起来。</summary>
+    public void ShowShellNavigation(bool show)
+    {
+        Rail.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (show)
+        {
+            UpdateRailSelection();
+        }
     }
 
     /// <summary>为缺少名称的服务器条目补齐 /System/Info 中的 ServerName。</summary>
@@ -183,8 +584,8 @@ public sealed partial class MainWindow : Window
             }
             if (updated)
             {
+                // 名称补全会写回设置；服务器页每次进入自己重新读取，这里不用额外刷新
                 settings.Save();
-                DispatcherQueue.TryEnqueue(RefreshServerBox);
             }
         }
         catch (Exception ex)
@@ -195,145 +596,42 @@ public sealed partial class MainWindow : Window
 
     public IntPtr Hwnd => (IntPtr)(long)AppWindow.Id.Value;
 
-    /// <summary>标题栏跟随应用主题：暗色纯黑白字、亮色白底黑字；按钮悬停/按下用中性灰阶。</summary>
+    /// <summary>
+    /// 标题栏跟随应用主题。窗口顶部已由 XAML 画了云母横条，所以系统标题栏背景一律透明，
+    /// 右上角缩小 / 全屏 / 关闭键的背景同样透明 —— 看到的云母就是那条横条本身；
+    /// 悬停 / 按下只在云母上叠一层极淡的灰，不让按钮变成一块实色。
+    /// </summary>
     private void ApplyThemeTitleBar(ElementTheme theme)
     {
         try
         {
             var titleBar = AppWindow.TitleBar;
-            if (theme == ElementTheme.Dark)
-            {
-                titleBar.BackgroundColor = Colors.Black;
-                titleBar.ForegroundColor = Colors.White;
-                titleBar.InactiveBackgroundColor = Colors.Black;
-                titleBar.InactiveForegroundColor = Color.FromArgb(255, 160, 160, 160);
+            var dark = theme == ElementTheme.Dark;
 
-                titleBar.ButtonBackgroundColor = Colors.Black;
-                titleBar.ButtonForegroundColor = Colors.White;
-                titleBar.ButtonHoverBackgroundColor = Color.FromArgb(255, 40, 40, 40);
-                titleBar.ButtonHoverForegroundColor = Colors.White;
-                titleBar.ButtonPressedBackgroundColor = Color.FromArgb(255, 64, 64, 64);
-                titleBar.ButtonPressedForegroundColor = Colors.White;
-            }
-            else
-            {
-                titleBar.BackgroundColor = Colors.White;
-                titleBar.ForegroundColor = Colors.Black;
-                titleBar.InactiveBackgroundColor = Colors.White;
-                titleBar.InactiveForegroundColor = Color.FromArgb(255, 160, 160, 160);
+            titleBar.BackgroundColor = Colors.Transparent;
+            titleBar.InactiveBackgroundColor = Colors.Transparent;
+            titleBar.ForegroundColor = dark ? Colors.White : Colors.Black;
+            titleBar.InactiveForegroundColor = Color.FromArgb(255, 150, 150, 150);
 
-                titleBar.ButtonBackgroundColor = Colors.White;
-                titleBar.ButtonForegroundColor = Colors.Black;
-                titleBar.ButtonHoverBackgroundColor = Color.FromArgb(255, 229, 229, 229);
-                titleBar.ButtonHoverForegroundColor = Colors.Black;
-                titleBar.ButtonPressedBackgroundColor = Color.FromArgb(255, 204, 204, 204);
-                titleBar.ButtonPressedForegroundColor = Colors.Black;
-            }
+            // 按钮背景透明 → 透出下面的云母条；图标颜色随主题深浅
+            titleBar.ButtonBackgroundColor = Colors.Transparent;
+            titleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
+            titleBar.ButtonForegroundColor = dark ? Colors.White : Colors.Black;
+            titleBar.ButtonInactiveForegroundColor = Color.FromArgb(255, 150, 150, 150);
 
-            titleBar.ButtonInactiveBackgroundColor = titleBar.InactiveBackgroundColor;
-            titleBar.ButtonInactiveForegroundColor = titleBar.InactiveForegroundColor;
+            // 悬停 / 按下：暗主题叠白、亮主题叠黑，各约 12% / 19%
+            titleBar.ButtonHoverBackgroundColor = dark
+                ? Color.FromArgb(30, 255, 255, 255)
+                : Color.FromArgb(26, 0, 0, 0);
+            titleBar.ButtonHoverForegroundColor = dark ? Colors.White : Colors.Black;
+            titleBar.ButtonPressedBackgroundColor = dark
+                ? Color.FromArgb(48, 255, 255, 255)
+                : Color.FromArgb(40, 0, 0, 0);
+            titleBar.ButtonPressedForegroundColor = dark ? Colors.White : Colors.Black;
         }
         catch (Exception ex)
         {
             App.WriteCrashLog($"应用标题栏主题色失败：{ex}");
-        }
-    }
-
-    private void RefreshServerBox()
-    {
-        var settings = App.Services.GetRequiredService<SettingsService>();
-        _suppressServerChange = true;
-        // 末项是内置的「TMDB 在线推荐」，已添加服务器的用户可直接切过去看在线海报墙
-        // 注意：选中项必须取自同一个列表实例，否则 ComboBox 匹配不到会显示空白
-        var options = settings.SourceOptions;
-        ServerBox.ItemsSource = options;
-        ServerBox.SelectedItem =
-            options.FirstOrDefault(o => o.Id == settings.CurrentSourceOption?.Id)
-            // 还没有任何服务器时，直接停在 TMDB 上（首页也正是 TMDB 内容）
-            ?? options.FirstOrDefault(o => o.IsTmdb);
-        _suppressServerChange = false;
-    }
-
-    private void ServerBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_suppressServerChange)
-        {
-            return;
-        }
-        if (ServerBox.SelectedItem is not ContentSourceOption option)
-        {
-            return;
-        }
-        var settings = App.Services.GetRequiredService<SettingsService>();
-        // 选中项没变（含「已选中」与「切到空」）时不做任何跳转，避免首次填充下拉就触发导航
-        if (option.Id == settings.CurrentSourceOption?.Id)
-        {
-            return;
-        }
-
-        // 延迟到 ComboBox 事件处理完成后执行，避免在回调中切换页面导致 WinUI stowed exception 闪退
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            settings.SetSourceMode(option.IsTmdb);
-
-            // 切到某个服务器时同步切换 API 凭据；切到 TMDB 时保留当前服务器，
-            // 这样首页大图点「播放」仍能按片名在自己的媒体库里检索并播放。
-            if (option.Server is { } server)
-            {
-                settings.SwitchServer(server.Id);
-                var api = App.Services.GetRequiredService<EmbyApiClient>();
-                api.Configure(server.Url, server.AccessToken);
-            }
-
-            var navigation = App.Services.GetRequiredService<NavigationService>();
-            navigation.ShowShellNavigation(true);
-            navigation.NavigateTo<HomePage>();
-        });
-    }
-
-    private void AddServer_Click(object sender, RoutedEventArgs e)
-    {
-        // 收起下拉并延迟导航，避免弹窗/选择处理期间切换 Frame 引发闪退
-        ServerBox.IsDropDownOpen = false;
-
-        var navigation = App.Services.GetRequiredService<NavigationService>();
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            navigation.ShowShellNavigation(false);
-            navigation.NavigateTo<LoginPage>("add");
-        });
-    }
-
-    public void ShowShellNavigation(bool show)
-    {
-        NavView.IsPaneVisible = show;
-        if (show)
-        {
-            NavView.SelectedItem = NavView.MenuItems.FirstOrDefault();
-        }
-        UpdateResizer();
-    }
-
-    private void NavView_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
-    {
-        var navigation = App.Services.GetRequiredService<NavigationService>();
-        switch (args.InvokedItemContainer?.Tag as string)
-        {
-            case "Home":
-                navigation.NavigateTo<HomePage>();
-                break;
-            case "Library":
-                navigation.NavigateTo<LibraryPage>();
-                break;
-            case "Search":
-                navigation.NavigateTo<SearchPage>();
-                break;
-            case "Favorites":
-                navigation.NavigateTo<FavoritesPage>();
-                break;
-            case "Settings":
-                navigation.NavigateTo<SettingsPage>();
-                break;
         }
     }
 

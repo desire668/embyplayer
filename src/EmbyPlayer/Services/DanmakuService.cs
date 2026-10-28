@@ -236,8 +236,7 @@ public sealed class DanmakuService
     public string ConvertToAssFile(List<DanmakuEntry> danmakus, DanmakuAssOptions options)
     {
         var ass = ConvertToAss(danmakus, options);
-        var dir = Path.Combine(Path.GetTempPath(), "EmbyPlayer");
-        Directory.CreateDirectory(dir);
+        var dir = CacheService.DirectoryOf(CacheKind.Danmaku);
         var path = Path.Combine(dir, $"danmaku_{Guid.NewGuid():N}.ass");
         // ASS 必须用 UTF-8 BOM，否则 mpv 可能识别乱码
         File.WriteAllText(path, ass, new UTF8Encoding(true));

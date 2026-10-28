@@ -1,20 +1,62 @@
-using EmbyPlayer.Animations;
+﻿using EmbyPlayer.Animations;
 using EmbyPlayer.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Navigation;
 
 namespace EmbyPlayer.Views;
 
-public sealed partial class LibraryPage : Page
+public sealed partial class LibraryPage : Page, IRefreshablePage
 {
     public LibraryViewModel ViewModel { get; }
+
+    /// <summary>详情页点分类跳过来时带的过滤条件（OnNavigatedTo 早于 Loaded）。</summary>
+    private LibraryFilter? _filter;
+
+    /// <summary>首屏数据是否已拉过（在首页 / 媒体库之间来回切不再重复请求）。</summary>
+    private bool _initialized;
 
     public LibraryPage()
     {
         ViewModel = App.Services.GetRequiredService<LibraryViewModel>();
         InitializeComponent();
-        Loaded += async (_, _) => await ViewModel.InitializeAsync();
+
+        // 缓存页面实例：切走再回来沿用同一份数据与滚动位置，要更新点侧栏的刷新按钮
+        NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Required;
+
+        Loaded += async (_, _) => await LoadAsync();
+    }
+
+    /// <summary>侧栏刷新按钮：强制重新拉一次媒体库内容。</summary>
+    public async Task RefreshAsync() => await ViewModel.InitializeAsync(_filter);
+
+    private async Task LoadAsync()
+    {
+        if (_initialized)
+        {
+            return;
+        }
+
+        _initialized = true;
+        await ViewModel.InitializeAsync(_filter);
+    }
+
+    protected override void OnNavigatedTo(NavigationEventArgs e)
+    {
+        base.OnNavigatedTo(e);
+
+        // 从详情页带新的分类条件跳过来：条件变了才重新拉，否则沿用已加载的数据
+        var filter = e.Parameter as LibraryFilter;
+        if (_initialized && !Equals(filter, _filter))
+        {
+            _filter = filter;
+            _ = ViewModel.InitializeAsync(_filter);
+        }
+        else
+        {
+            _filter = filter;
+        }
     }
 
     private void ItemsGrid_ItemClick(object sender, ItemClickEventArgs e)

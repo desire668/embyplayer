@@ -1,99 +1,687 @@
-<Page
+﻿<Page
     x:Class="EmbyPlayer.Views.SettingsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:EmbyPlayer.Views"
+    xmlns:vm="using:EmbyPlayer.ViewModels">
 
-    <ScrollViewer>
-        <StackPanel Padding="24" Spacing="20" MaxWidth="640" HorizontalAlignment="Left">
+    <Page.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <!-- 分类列表：选中行是实心品牌蓝，其余透明，悬停只做极轻的灰 -->
+                    <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#FF1F6FEB" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#FF1B63D3" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="#FF1857BC" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#0F000000" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="#18000000" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#FF1F6FEB" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#FF2A7BF5" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="#FF1B63D3" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#14FFFFFF" />
+                    <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="#1FFFFFFF" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
 
-            <TextBlock Text="设置" FontSize="28" FontWeight="Bold" />
+            <!-- 分类项：圆角矩形 + 彩色图标 + 文字 -->
+            <Style x:Key="SettingsNavItemStyle" TargetType="ListViewItem">
+                <Setter Property="MinHeight" Value="40" />
+                <Setter Property="Padding" Value="10,5" />
+                <Setter Property="Margin" Value="0,1" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            </Style>
 
-            <StackPanel Spacing="4">
-                <TextBlock Text="账户" FontSize="16" FontWeight="SemiBold" />
-                <TextBlock Text="{x:Bind ViewModel.ServerInfo, Mode=OneWay}" Opacity="0.8" />
-                <Button Content="退出登录" Command="{x:Bind ViewModel.LogoutCommand}" Margin="0,8,0,0" />
-            </StackPanel>
+            <Style x:Key="SettingsPageTitle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="26" />
+                <Setter Property="FontWeight" Value="Bold" />
+                <Setter Property="Margin" Value="2,0,0,18" />
+            </Style>
 
-            <StackPanel Spacing="4">
-                <TextBlock Text="播放" FontSize="16" FontWeight="SemiBold" />
-                <ToggleSwitch Header="播完自动播放下一集"
-                              IsOn="{x:Bind ViewModel.AutoPlayNext, Mode=TwoWay}" />
-            </StackPanel>
+            <Style x:Key="SettingsGroupHeader" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="Opacity" Value="0.55" />
+                <Setter Property="Margin" Value="4,10,0,6" />
+            </Style>
 
-            <StackPanel Spacing="4">
-                <TextBlock Text="界面" FontSize="16" FontWeight="SemiBold" />
-                <ToggleSwitch Header="减弱动效"
-                              IsOn="{x:Bind ViewModel.ReduceMotion, Mode=TwoWay}" />
-                <TextBlock Opacity="0.6" FontSize="12" TextWrapping="Wrap"
-                           Text="开启后取消卡片浮起、海报视差、错峰入场与页面推入动画。系统「设置 → 辅助功能 → 视觉效果」里关闭动画效果时也会自动生效。" />
-            </StackPanel>
+            <Style x:Key="SettingsNote" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="Opacity" Value="0.5" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+                <Setter Property="Margin" Value="4,2,0,4" />
+            </Style>
 
-            <StackPanel Spacing="8">
-                <TextBlock Text="弹幕" FontSize="16" FontWeight="SemiBold" />
-                <ToggleSwitch Header="播放时加载弹幕"
-                              IsOn="{x:Bind ViewModel.DanmakuEnabled, Mode=TwoWay}" />
-                <TextBox Header="弹幕服务器 URL（LogVar 弹幕 API 基地址，可选）"
-                         Text="{x:Bind ViewModel.DanmakuServerUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                         PlaceholderText="例如 https://dm.wodenas.xin/xiatianembydmff" />
-                <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,4,0,0">
-                    <NumberBox Header="字号" Value="{x:Bind ViewModel.DanmakuFontSize, Mode=TwoWay}"
-                               Minimum="20" Maximum="80" SpinButtonPlacementMode="Compact"
-                               Width="120" />
-                    <NumberBox Header="不透明度" Value="{x:Bind ViewModel.DanmakuOpacity, Mode=TwoWay}"
-                               Minimum="0.1" Maximum="1.0" SpinButtonPlacementMode="Compact"
-                               Width="120" />
+            <!-- 快捷键胶囊：整块圆角键帽，点击进入录制状态 -->
+            <Style x:Key="ShortcutKeyButtonStyle" TargetType="Button">
+                <Setter Property="MinWidth" Value="176" />
+                <Setter Property="Height" Value="34" />
+                <Setter Property="Padding" Value="14,0" />
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="Background" Value="{ThemeResource ShortcutKeyBackground}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ShortcutKeyStroke}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid>
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <Storyboard>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Pill"
+                                                                               Storyboard.TargetProperty="Background">
+                                                    <DiscreteObjectKeyFrame KeyTime="0"
+                                                                            Value="{ThemeResource ShortcutKeyPointerOver}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetName="Pill"
+                                                                 Storyboard.TargetProperty="Opacity"
+                                                                 To="0.7" Duration="0:0:0.08" />
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetName="Pill"
+                                                                 Storyboard.TargetProperty="Opacity"
+                                                                 To="0.4" Duration="0" />
+                                            </Storyboard>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <Border x:Name="Pill"
+                                        CornerRadius="17"
+                                        Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}">
+                                    <ContentPresenter
+                                        HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                        VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                        Padding="{TemplateBinding Padding}" />
+                                </Border>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </ResourceDictionary>
+    </Page.Resources>
+
+    <Grid Background="{ThemeResource SettingsPageBackground}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="252" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- ==================== 左：分类 ==================== -->
+        <Grid Grid.Column="0"
+              Background="{ThemeResource SettingsNavBackground}"
+              Padding="14,18,10,12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <TextBlock Text="设置" FontSize="22" FontWeight="SemiBold" Margin="8,0,0,14" />
+
+            <AutoSuggestBox x:Name="SearchBox"
+                            Grid.Row="1"
+                            QueryIcon="Find"
+                            PlaceholderText="搜索"
+                            Margin="0,0,0,10"
+                            TextChanged="SearchBox_TextChanged" />
+
+            <ListView x:Name="NavList"
+                      Grid.Row="2"
+                      SelectionMode="Single"
+                      ItemsSource="{x:Bind Categories, Mode=OneWay}"
+                      ItemContainerStyle="{StaticResource SettingsNavItemStyle}"
+                      SelectionChanged="NavList_SelectionChanged">
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="local:SettingsCategory">
+                        <Grid ColumnSpacing="12" Background="Transparent">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Width="26" Height="26" CornerRadius="8"
+                                    Background="{x:Bind IconBrush}">
+                                <FontIcon Glyph="{x:Bind Glyph}"
+                                          FontSize="13"
+                                          Foreground="White" />
+                            </Border>
+                            <TextBlock Grid.Column="1"
+                                       Text="{x:Bind Name}"
+                                       FontSize="14"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis" />
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Grid>
+
+        <!-- ==================== 右：内容 ==================== -->
+        <ScrollViewer x:Name="ContentScroll" Grid.Column="1" Padding="36,26,32,32" VerticalScrollBarVisibility="Auto">
+            <StackPanel MaxWidth="820" HorizontalAlignment="Stretch">
+
+                <!-- ===== 通用 ===== -->
+                <StackPanel x:Name="SecGeneral" Spacing="0">
+                    <TextBlock Text="通用" Style="{StaticResource SettingsPageTitle}" />
+
+                    <TextBlock Text="首页" Style="{StaticResource SettingsGroupHeader}" />
+                    <local:SettingRow Header="内容源" ControlWidth="220"
+                                      Description="决定首页大图与海报墙取自 Emby 媒体库还是 TMDB 在线推荐">
+                        <local:SettingRow.Body>
+                            <ComboBox ItemsSource="{x:Bind ViewModel.Sources, Mode=OneWay}"
+                                      SelectedItem="{x:Bind ViewModel.SelectedSource, Mode=TwoWay}"
+                                      DisplayMemberPath="DisplayName"
+                                      HorizontalAlignment="Stretch" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <TextBlock Text="播放" Style="{StaticResource SettingsGroupHeader}" />
+                    <local:SettingRow Header="播完自动播放下一集">
+                        <local:SettingRow.Body>
+                            <ToggleSwitch IsOn="{x:Bind ViewModel.AutoPlayNext, Mode=TwoWay}"
+                                          OnContent="" OffContent="" MinWidth="0" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <TextBlock Text="轮播" Style="{StaticResource SettingsGroupHeader}" />
+                    <local:SettingRow Header="首页大图自动切换间隔" ControlWidth="200"
+                                      Description="当前这一屏播放时不会停下轮播；手动点左右两侧会重新计时">
+                        <local:SettingRow.Body>
+                            <ComboBox SelectedIndex="{x:Bind ViewModel.HeroIntervalIndex, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="8 秒" />
+                                <ComboBoxItem Content="12 秒" />
+                                <ComboBoxItem Content="20 秒" />
+                                <ComboBoxItem Content="30 秒" />
+                                <ComboBoxItem Content="不自动切换" />
+                            </ComboBox>
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <TextBlock Text="界面" Style="{StaticResource SettingsGroupHeader}" />
+                    <local:SettingRow Header="减弱动效"
+                                      Description="关闭卡片浮起、海报视差、错峰入场与页面推入动画；系统辅助功能里关闭动画时也会自动生效">
+                        <local:SettingRow.Body>
+                            <ToggleSwitch IsOn="{x:Bind ViewModel.ReduceMotion, Mode=TwoWay}"
+                                          OnContent="" OffContent="" MinWidth="0" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Spacing="16">
-                    <NumberBox Header="滚动时长（秒）" Value="{x:Bind ViewModel.DanmakuScrollDuration, Mode=TwoWay}"
-                               Minimum="3" Maximum="20" SpinButtonPlacementMode="Compact"
-                               Width="140" />
-                    <NumberBox Header="显示区域比例" Value="{x:Bind ViewModel.DanmakuDisplayArea, Mode=TwoWay}"
-                               Minimum="0.1" Maximum="1.0" SpinButtonPlacementMode="Compact"
-                               Width="140" />
+
+                <!-- ===== 外观 ===== -->
+                <StackPanel x:Name="SecAppearance" Spacing="0" Visibility="Collapsed">
+                    <TextBlock Text="外观" Style="{StaticResource SettingsPageTitle}" />
+
+                    <TextBlock Text="主题" Style="{StaticResource SettingsGroupHeader}" />
+                    <local:SettingRow Header="颜色模式" ControlWidth="200"
+                                      Description="跟随系统时会随 Windows「应用模式」自动切换">
+                        <local:SettingRow.Body>
+                            <ComboBox SelectedIndex="{x:Bind ViewModel.ThemeIndex, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="跟随系统" />
+                                <ComboBoxItem Content="浅色" />
+                                <ComboBoxItem Content="深色" />
+                            </ComboBox>
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <TextBlock Text="动效" Style="{StaticResource SettingsGroupHeader}" />
+                    <local:SettingRow Header="减弱动效"
+                                      Description="关闭卡片浮起、海报视差、错峰入场与页面推入动画">
+                        <local:SettingRow.Body>
+                            <ToggleSwitch IsOn="{x:Bind ViewModel.ReduceMotion, Mode=TwoWay}"
+                                          OnContent="" OffContent="" MinWidth="0" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
                 </StackPanel>
-                <TextBlock Opacity="0.6" FontSize="12" TextWrapping="Wrap"
-                           Text="说明：弹幕源支持本地 bilibili XML 文件（播放对话框中浏览选择）或配置弹幕服务器自动获取。填写 LogVar 弹幕 API 基地址（如 https://host/token）后，会按影片名自动搜索并匹配对应集数获取弹幕；若 URL 含 {title} 占位符，则按旧版直链模板请求（{title} 替换为影片名）。" />
-            </StackPanel>
 
-            <StackPanel Spacing="6">
-                <TextBlock Text="在线内容（TMDB）" FontSize="16" FontWeight="SemiBold" />
-                <TextBox Header="TMDB API Key / 令牌（可选）"
-                         Text="{x:Bind ViewModel.TmdbApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                         PlaceholderText="32 位密钥（1edb…）或以 eyJ 开头的 v4 令牌，整段粘贴" />
-                <TextBlock Opacity="0.6" FontSize="12" TextWrapping="Wrap"
-                           Text="两种都支持：v3「API Key」（32 位十六进制）走 api_key 参数，v4「Read Access Token」（eyJ 开头）走 Bearer 请求头。内容源切到「TMDB 在线推荐」时需要它；未登录服务器时也会用它填充首页。Key 只存在本机设置里，不会随安装包分发。" />
-                <HyperlinkButton Content="去 themoviedb.org 申请 API Key"
-                                 NavigateUri="https://www.themoviedb.org/settings/api" />
-            </StackPanel>
+                <!-- ===== 播放器 ===== -->
+                <StackPanel x:Name="SecPlayer" Spacing="0" Visibility="Collapsed">
+                    <TextBlock Text="播放器" Style="{StaticResource SettingsPageTitle}" />
 
-            <StackPanel Spacing="4">
-                <TextBlock Text="播放器" FontSize="16" FontWeight="SemiBold" />
-                <TextBox Header="mpv.exe 路径（留空则自动探测）"
-                         Text="{x:Bind ViewModel.MpvPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,8,0,0">
-                    <Button Content="浏览…" Click="BrowseMpv_Click" />
-                    <Button Content="自动探测" Command="{x:Bind ViewModel.DetectMpvCommand}" />
+                    <TextBlock Text="mpv 程序" Style="{StaticResource SettingsGroupHeader}" />
+                    <local:SettingRow Header="mpv.exe 路径"
+                                      Description="留空则自动探测：安装目录、开发目录、Program Files、winget / scoop / PATH"
+                                      Stacked="True">
+                        <local:SettingRow.Body>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Text="{x:Bind ViewModel.MpvPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         PlaceholderText="例如 C:\Program Files\mpv\mpv.exe" />
+                                <Button Grid.Column="1" Content="浏览…" Click="BrowseMpv_Click" />
+                                <Button Grid.Column="2" Content="自动探测"
+                                        Command="{x:Bind ViewModel.DetectMpvCommand}" />
+                            </Grid>
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
                     <TextBlock Text="{x:Bind ViewModel.MpvStatus, Mode=OneWay}"
-                               VerticalAlignment="Center" Opacity="0.7" TextWrapping="Wrap" />
-                </StackPanel>
-            </StackPanel>
+                               Style="{StaticResource SettingsNote}"
+                               IsTextSelectionEnabled="True" />
 
-            <StackPanel Spacing="6">
-                <TextBlock Text="关于" FontSize="16" FontWeight="SemiBold" />
-                <TextBlock Opacity="0.8" IsTextSelectionEnabled="True">
-                    <Run Text="EmbyPlayer " />
-                    <Run Text="{x:Bind ViewModel.AppVersion, Mode=OneWay}" />
-                </TextBlock>
-                <HyperlinkButton Content="GitHub 仓库：desire668/embyplayer"
-                                 Command="{x:Bind ViewModel.OpenGitHubCommand}" />
-                <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,4,0,0">
-                    <Button Content="检查更新"
-                            Command="{x:Bind ViewModel.CheckUpdateCommand}" />
-                    <ProgressRing IsActive="{x:Bind ViewModel.IsCheckingUpdate, Mode=OneWay}"
-                                  Width="20" Height="20"
-                                  VerticalAlignment="Center" />
+                    <TextBlock Text="画面与性能" Style="{StaticResource SettingsGroupHeader}" />
+                    <local:SettingRow Header="硬件解码" ControlWidth="200"
+                                      Description="播放花屏、绿屏或卡顿时可先尝试「关闭」，排查是否为显卡解码问题">
+                        <local:SettingRow.Body>
+                            <ComboBox SelectedIndex="{x:Bind ViewModel.HwdecIndex, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="自动（推荐）" />
+                                <ComboBoxItem Content="关闭（软解）" />
+                                <ComboBoxItem Content="D3D11VA" />
+                                <ComboBoxItem Content="NVDEC（N 卡）" />
+                                <ComboBoxItem Content="自动（含不安全）" />
+                            </ComboBox>
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <local:SettingRow Header="预读缓存" ControlWidth="200"
+                                      Description="网络播放卡顿可调大；本地文件一般 30 秒足够">
+                        <local:SettingRow.Body>
+                            <ComboBox SelectedIndex="{x:Bind ViewModel.CacheIndex, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="关闭" />
+                                <ComboBoxItem Content="10 秒" />
+                                <ComboBoxItem Content="30 秒（默认）" />
+                                <ComboBoxItem Content="60 秒" />
+                                <ComboBoxItem Content="120 秒（高码率）" />
+                            </ComboBox>
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <TextBlock Text="声音" Style="{StaticResource SettingsGroupHeader}" />
+                    <local:SettingRow Header="起始音量" ControlWidth="260"
+                                      Description="每次启动 mpv 时的初始音量，播放中仍可调节">
+                        <local:SettingRow.Body>
+                            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                <Slider Width="180" Minimum="0" Maximum="100" StepFrequency="5"
+                                        Value="{x:Bind ViewModel.Volume, Mode=TwoWay}" />
+                                <TextBlock Width="42" VerticalAlignment="Center"
+                                           Text="{x:Bind ViewModel.VolumeText, Mode=OneWay}" />
+                            </StackPanel>
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <local:SettingRow Header="音轨语言优先" ControlWidth="200"
+                                      Description="多音轨片源优先选中的语言，找不到时退回 mpv 自动选择">
+                        <local:SettingRow.Body>
+                            <ComboBox SelectedIndex="{x:Bind ViewModel.AudioLangIndex, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="自动" />
+                                <ComboBoxItem Content="国语 / 中文" />
+                                <ComboBoxItem Content="粤语" />
+                                <ComboBoxItem Content="日语" />
+                                <ComboBoxItem Content="英语" />
+                            </ComboBox>
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <TextBlock Text="高级" Style="{StaticResource SettingsGroupHeader}" />
+                    <local:SettingRow Header="额外 mpv 参数"
+                                      Description="空格分隔，缺省 -- 前缀会自动补齐，例如 profile=fast demuxer-max-bytes=512MiB"
+                                      Stacked="True">
+                        <local:SettingRow.Body>
+                            <TextBox Text="{x:Bind ViewModel.MpvExtraArgs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="--profile=fast --demuxer-max-bytes=512MiB"
+                                     FontFamily="Consolas" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+                    <local:SettingRow Header="恢复默认播放参数"
+                                      Description="把硬件解码、缓存、音量、音轨与字幕样式恢复默认；mpv 路径不会改动">
+                        <local:SettingRow.Body>
+                            <Button Content="恢复默认" Command="{x:Bind ViewModel.ResetMpvCommand}" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <TextBlock Style="{StaticResource SettingsNote}" TextWrapping="Wrap"
+                               Text="以上参数在下次开始播放时写入 mpv 命令行生效；正在播放时修改不会打断当前播放。" />
                 </StackPanel>
+
+                <!-- ===== 快捷键 ===== -->
+                <StackPanel x:Name="SecShortcuts" Spacing="0" Visibility="Collapsed">
+                    <TextBlock Text="快捷键" Style="{StaticResource SettingsPageTitle}" />
+
+                    <TextBlock Text="播放器" Style="{StaticResource SettingsGroupHeader}" />
+                    <StackPanel x:Name="ShortcutList" Spacing="0" />
+
+                    <TextBlock Text="{x:Bind ViewModel.ShortcutStatus, Mode=OneWay}"
+                               Style="{StaticResource SettingsNote}" />
+
+                    <local:SettingRow Header="恢复默认快捷键"
+                                      Description="把上面所有按键恢复成默认值；正在播放时修改不会打断当前播放">
+                        <local:SettingRow.Body>
+                            <Button Content="恢复默认" Command="{x:Bind ViewModel.ResetShortcutsCommand}" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <TextBlock Style="{StaticResource SettingsNote}" TextWrapping="Wrap"
+                               Text="点击右侧按键开始录制，按下想用的键即可（可同时按住 Ctrl / Alt / Shift）；Esc 取消，Delete 取消绑定。一个功能只绑一个键，录制会替换原来的按键。按键写进 EmbyPlayer 生成的 mpv input.conf，下次开始播放时生效。" />
+                </StackPanel>
+
+                <!-- ===== 字幕与弹幕 ===== -->
+                <StackPanel x:Name="SecSubtitle" Spacing="0" Visibility="Collapsed">
+                    <TextBlock Text="字幕与弹幕" Style="{StaticResource SettingsPageTitle}" />
+
+                    <TextBlock Text="弹幕" Style="{StaticResource SettingsGroupHeader}" />
+                    <local:SettingRow Header="播放时加载弹幕"
+                                      Description="支持本地 bilibili XML 文件（播放对话框选择），或按片名从弹幕服务器自动获取">
+                        <local:SettingRow.Body>
+                            <ToggleSwitch IsOn="{x:Bind ViewModel.DanmakuEnabled, Mode=TwoWay}"
+                                          OnContent="" OffContent="" MinWidth="0" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <local:SettingRow Header="弹幕服务器地址" Stacked="True"
+                                      Description="LogVar 弹幕 API 基地址，例如 https://host/token；含 {title} 时按旧版直链模板请求">
+                        <local:SettingRow.Body>
+                            <TextBox Text="{x:Bind ViewModel.DanmakuServerUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="https://dm.example.com/xiatianembydmff" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <local:SettingRow Header="弹幕字号" ControlWidth="160">
+                        <local:SettingRow.Body>
+                            <NumberBox Value="{x:Bind ViewModel.DanmakuFontSize, Mode=TwoWay}"
+                                       Minimum="20" Maximum="80" SmallChange="2"
+                                       SpinButtonPlacementMode="Compact" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <local:SettingRow Header="弹幕不透明度" ControlWidth="160">
+                        <local:SettingRow.Body>
+                            <NumberBox Value="{x:Bind ViewModel.DanmakuOpacity, Mode=TwoWay}"
+                                       Minimum="0.1" Maximum="1" SmallChange="0.05"
+                                       SpinButtonPlacementMode="Compact" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <local:SettingRow Header="滚动时长（秒）" ControlWidth="160">
+                        <local:SettingRow.Body>
+                            <NumberBox Value="{x:Bind ViewModel.DanmakuScrollDuration, Mode=TwoWay}"
+                                       Minimum="3" Maximum="20" SmallChange="1"
+                                       SpinButtonPlacementMode="Compact" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <local:SettingRow Header="弹幕显示区域比例" ControlWidth="160"
+                                      Description="0.5 表示只占画面上半部分，避免挡住字幕">
+                        <local:SettingRow.Body>
+                            <NumberBox Value="{x:Bind ViewModel.DanmakuDisplayArea, Mode=TwoWay}"
+                                       Minimum="0.1" Maximum="1" SmallChange="0.05"
+                                       SpinButtonPlacementMode="Compact" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <TextBlock Text="mpv 原生字幕" Style="{StaticResource SettingsGroupHeader}" />
+                    <local:SettingRow Header="字幕字号" ControlWidth="160"
+                                      Description="仅影响 mpv 渲染的字幕（ASS 字幕若带固定样式可能不生效）">
+                        <local:SettingRow.Body>
+                            <NumberBox Value="{x:Bind ViewModel.SubFontSize, Mode=TwoWay}"
+                                       Minimum="20" Maximum="120" SmallChange="1"
+                                       SpinButtonPlacementMode="Compact" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <local:SettingRow Header="字幕描边粗细" ControlWidth="160">
+                        <local:SettingRow.Body>
+                            <NumberBox Value="{x:Bind ViewModel.SubBorderSize, Mode=TwoWay}"
+                                       Minimum="0" Maximum="10" SmallChange="0.5"
+                                       SpinButtonPlacementMode="Compact" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <local:SettingRow Header="字幕垂直位置" ControlWidth="160"
+                                      Description="100 为默认贴近画面底部，数值越小越靠上">
+                        <local:SettingRow.Body>
+                            <NumberBox Value="{x:Bind ViewModel.SubPos, Mode=TwoWay}"
+                                       Minimum="0" Maximum="150" SmallChange="5"
+                                       SpinButtonPlacementMode="Compact" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+                </StackPanel>
+
+                <!-- ===== 外部服务：连接账号 / 填自己的 API ===== -->
+                <StackPanel x:Name="SecExternal" Spacing="0" Visibility="Collapsed">
+                    <TextBlock Text="外部服务" Style="{StaticResource SettingsPageTitle}" />
+
+                    <TextBlock Text="连接账号 / 填写自己的 API" Style="{StaticResource SettingsGroupHeader}" />
+
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.ExternalLinks, Mode=OneWay}"
+                                  Margin="0,8,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ExternalLinkItem">
+                                <Border Background="{ThemeResource SettingsCardBackground}"
+                                        CornerRadius="10" Padding="16,12" Margin="0,0,0,8">
+                                    <StackPanel Spacing="10">
+                                        <Grid ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Spacing="2">
+                                                <TextBlock Text="{x:Bind Name}" FontSize="14"
+                                                           FontWeight="SemiBold" />
+                                                <TextBlock Text="{x:Bind Purpose}" FontSize="12"
+                                                           Opacity="0.55" TextWrapping="Wrap" />
+                                            </StackPanel>
+
+                                            <!-- 连接状态徽章 -->
+                                            <Border Grid.Column="1" VerticalAlignment="Top"
+                                                    CornerRadius="10" Padding="8,3"
+                                                    BorderThickness="1"
+                                                    BorderBrush="{x:Bind StateBrush, Mode=OneWay}">
+                                                <StackPanel Orientation="Horizontal" Spacing="5">
+                                                    <FontIcon Glyph="{x:Bind StateGlyph, Mode=OneWay}"
+                                                              FontSize="11"
+                                                              Foreground="{x:Bind StateBrush, Mode=OneWay}" />
+                                                    <TextBlock Text="{x:Bind StateText, Mode=OneWay}"
+                                                               FontSize="12"
+                                                               Foreground="{x:Bind StateBrush, Mode=OneWay}" />
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+
+                                        <TextBox Text="{x:Bind Credential, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                 PlaceholderText="{x:Bind Placeholder}"
+                                                 FontFamily="Consolas" />
+
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Button Content="验证连接"
+                                                    Style="{StaticResource AccentButtonStyle}"
+                                                    Command="{x:Bind VerifyCommand}" />
+                                            <Button Content="断开"
+                                                    Command="{x:Bind DisconnectCommand}" />
+                                            <ProgressRing Width="16" Height="16"
+                                                          IsActive="{x:Bind IsBusy, Mode=OneWay}" />
+                                            <HyperlinkButton Content="{x:Bind SiteLabel}"
+                                                             NavigateUri="{x:Bind SiteUri}"
+                                                             Padding="4,0" />
+                                        </StackPanel>
+
+                                        <TextBlock Text="{x:Bind StatusText, Mode=OneWay}"
+                                                   FontSize="12" Opacity="0.7" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Text="自定义接口地址（高级）" Style="{StaticResource SettingsGroupHeader}" />
+                    <TextBlock Style="{StaticResource SettingsNote}" TextWrapping="Wrap"
+                               Text="官方地址连不上时（例如国内访问 TMDB），可以换成自建反代 / 镜像。全部留空即使用官方地址。" />
+
+                    <local:SettingRow Header="TMDB 接口地址" Stacked="True"
+                                      Description="留空用官方 https://api.themoviedb.org/3">
+                        <local:SettingRow.Body>
+                            <TextBox Text="{x:Bind ViewModel.TmdbBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="https://api.themoviedb.org/3" FontFamily="Consolas" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <local:SettingRow Header="TMDB 图片前缀" Stacked="True"
+                                      Description="海报与大图的 CDN 前缀，留空用官方 https://image.tmdb.org/t/p">
+                        <local:SettingRow.Body>
+                            <TextBox Text="{x:Bind ViewModel.TmdbImageBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="https://image.tmdb.org/t/p" FontFamily="Consolas" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <local:SettingRow Header="OMDb 接口地址" Stacked="True"
+                                      Description="IMDb 评分来源，留空用官方 https://www.omdbapi.com/">
+                        <local:SettingRow.Body>
+                            <TextBox Text="{x:Bind ViewModel.OmdbBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="https://www.omdbapi.com/" FontFamily="Consolas" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <local:SettingRow Header="图片代理前缀" Stacked="True"
+                                      Description="图片域名被拦时的兜底代理，留空用 https://wsrv.nl/?url=">
+                        <local:SettingRow.Body>
+                            <TextBox Text="{x:Bind ViewModel.ImageProxyBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="https://wsrv.nl/?url=" FontFamily="Consolas" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+                    <Button Content="恢复官方默认地址"
+                            Command="{x:Bind ViewModel.RestoreDefaultApiUrlsCommand}"
+                            Margin="0,0,0,12" />
+                </StackPanel>
+
+                <!-- ===== 缓存管理 ===== -->
+                <StackPanel x:Name="SecCache" Spacing="0" Visibility="Collapsed">
+                    <TextBlock Text="缓存管理" Style="{StaticResource SettingsPageTitle}" />
+                    <TextBlock Text="{x:Bind ViewModel.TotalCacheSize, Mode=OneWay}"
+                               Style="{StaticResource SettingsNote}" />
+
+                    <TextBlock Text="元数据缓存" Style="{StaticResource SettingsGroupHeader}" />
+                    <local:SettingRow Header="服务器返回的列表与详情"
+                                      Description="{x:Bind ViewModel.MetadataCacheSize, Mode=OneWay}">
+                        <local:SettingRow.Body>
+                            <Button Content="清理" Command="{x:Bind ViewModel.ClearMetadataCacheCommand}" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+                    <local:SettingRow Header="有效期"
+                                      Description="超过这个时间的缓存会重新向服务器请求；设为「不缓存」则每次都实时拉取">
+                        <local:SettingRow.Body>
+                            <ComboBox MinWidth="140" SelectedIndex="{x:Bind ViewModel.MetadataTtlIndex, Mode=TwoWay}">
+                                <ComboBoxItem Content="不缓存" />
+                                <ComboBoxItem Content="5 分钟" />
+                                <ComboBoxItem Content="10 分钟" />
+                                <ComboBoxItem Content="30 分钟" />
+                                <ComboBoxItem Content="60 分钟" />
+                            </ComboBox>
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+                    <local:SettingRow Header="上限" Description="超过后自动淘汰最久未使用的条目；0 表示不限制">
+                        <local:SettingRow.Body>
+                            <NumberBox Minimum="0" Maximum="10240" SmallChange="128" SpinButtonPlacementMode="Compact"
+                                       Value="{x:Bind ViewModel.MetadataCacheLimitMb, Mode=TwoWay}" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <TextBlock Text="图片与网络缓存" Style="{StaticResource SettingsGroupHeader}" />
+                    <local:SettingRow Header="海报、背景图与下载下来的网络图片"
+                                      Description="{x:Bind ViewModel.ImageCacheSize, Mode=OneWay}">
+                        <local:SettingRow.Body>
+                            <Button Content="清理" Command="{x:Bind ViewModel.ClearImageCacheCommand}" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+                    <local:SettingRow Header="上限" Description="超过后自动淘汰最久未使用的图片">
+                        <local:SettingRow.Body>
+                            <NumberBox Minimum="0" Maximum="10240" SmallChange="128" SpinButtonPlacementMode="Compact"
+                                       Value="{x:Bind ViewModel.ImageCacheLimitMb, Mode=TwoWay}" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <TextBlock Text="弹幕缓存" Style="{StaticResource SettingsGroupHeader}" />
+                    <local:SettingRow Header="播放时生成的弹幕 ASS 文件"
+                                      Description="{x:Bind ViewModel.DanmakuCacheSize, Mode=OneWay}">
+                        <local:SettingRow.Body>
+                            <Button Content="清理" Command="{x:Bind ViewModel.ClearDanmakuCacheCommand}" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+                    <local:SettingRow Header="上限" Description="超过后自动删除最旧的弹幕文件">
+                        <local:SettingRow.Body>
+                            <NumberBox Minimum="0" Maximum="10240" SmallChange="64" SpinButtonPlacementMode="Compact"
+                                       Value="{x:Bind ViewModel.DanmakuCacheLimitMb, Mode=TwoWay}" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <TextBlock Text="播放缓存" Style="{StaticResource SettingsGroupHeader}" />
+                    <local:SettingRow Header="外挂字幕与播放脚本"
+                                      Description="{x:Bind ViewModel.PlaybackCacheSize, Mode=OneWay}">
+                        <local:SettingRow.Body>
+                            <Button Content="清理" Command="{x:Bind ViewModel.ClearPlaybackCacheCommand}" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+                    <local:SettingRow Header="上限" Description="超过后自动删除最旧的播放缓存">
+                        <local:SettingRow.Body>
+                            <NumberBox Minimum="0" Maximum="10240" SmallChange="64" SpinButtonPlacementMode="Compact"
+                                       Value="{x:Bind ViewModel.PlaybackCacheLimitMb, Mode=TwoWay}" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <TextBlock Text="全部" Style="{StaticResource SettingsGroupHeader}" />
+                    <local:SettingRow Header="清理所有缓存"
+                                      Description="同时清空上面四类；正在播放的字幕与弹幕文件被占用会跳过">
+                        <local:SettingRow.Body>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="全部清理" Command="{x:Bind ViewModel.ClearAllCachesCommand}" />
+                                <Button Content="打开缓存目录" Command="{x:Bind ViewModel.OpenCacheFolderCommand}" />
+                            </StackPanel>
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+                    <TextBlock Text="{x:Bind ViewModel.CacheStatus, Mode=OneWay}"
+                               Style="{StaticResource SettingsNote}" />
+                </StackPanel>
+
+                <!-- ===== 关于 ===== -->
+                <StackPanel x:Name="SecAbout" Spacing="0" Visibility="Collapsed">
+                    <TextBlock Text="关于" Style="{StaticResource SettingsPageTitle}" />
+
+                    <TextBlock Text="版本" Style="{StaticResource SettingsGroupHeader}" />
+                    <local:SettingRow Header="EmbyPlayer"
+                                      Description="面向 Emby 的第三方桌面播放器，播放由 mpv 负责">
+                        <local:SettingRow.Body>
+                            <TextBlock Text="{x:Bind ViewModel.AppVersion, Mode=OneWay}"
+                                       VerticalAlignment="Center" Opacity="0.7" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <local:SettingRow Header="检查更新"
+                                      Description="从 GitHub Release 获取最新版本并直接下载安装包">
+                        <local:SettingRow.Body>
+                            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                <Button Content="检查更新" Command="{x:Bind ViewModel.CheckUpdateCommand}" />
+                                <ProgressRing Width="18" Height="18"
+                                              IsActive="{x:Bind ViewModel.IsCheckingUpdate, Mode=OneWay}" />
+                            </StackPanel>
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+
+                    <local:SettingRow Header="开源仓库">
+                        <local:SettingRow.Body>
+                            <HyperlinkButton Content="desire668/embyplayer"
+                                             Command="{x:Bind ViewModel.OpenGitHubCommand}" />
+                        </local:SettingRow.Body>
+                    </local:SettingRow>
+                </StackPanel>
+
             </StackPanel>
-        </StackPanel>
-    </ScrollViewer>
+        </ScrollViewer>
+    </Grid>
 </Page>

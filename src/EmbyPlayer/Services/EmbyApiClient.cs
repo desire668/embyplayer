@@ -151,19 +151,27 @@ public sealed class EmbyApiClient : IDisposable
 
     public async Task<QueryResult<BaseItemDto>> GetItemsAsync(
         string parentId, string includeItemTypes, int limit = 500,
-        string sortBy = "SortName", string sortOrder = "Ascending", CancellationToken ct = default)
+        string sortBy = "SortName", string sortOrder = "Ascending",
+        string? genres = null, CancellationToken ct = default)
     {
         var url = $"/Users/{UserId}/Items?ParentId={parentId}&Recursive=true" +
                   $"&IncludeItemTypes={includeItemTypes}" +
                   "&Fields=Overview,Genres,CommunityRating,PrimaryImageAspectRatio,SortName,UserData" +
                   $"&ImageTypeLimit=1&SortBy={sortBy}&SortOrder={sortOrder}" +
                   $"&Limit={limit}";
+        // 详情页点分类跳过来时按 Genres 过滤（Emby 支持按名称匹配）
+        if (!string.IsNullOrWhiteSpace(genres))
+        {
+            url += "&Genres=" + Uri.EscapeDataString(genres);
+        }
         return await GetAsync<QueryResult<BaseItemDto>>(url, ct);
     }
 
     public async Task<BaseItemDto> GetItemAsync(string itemId, CancellationToken ct = default) =>
         await GetAsync<BaseItemDto>(
-            $"/Users/{UserId}/Items/{itemId}?Fields=Overview,PrimaryImageAspectRatio,SortName,UserData", ct);
+            $"/Users/{UserId}/Items/{itemId}" +
+            "?Fields=Overview,Genres,ProviderIds,CommunityRating,OfficialRating,PrimaryImageAspectRatio,SortName,UserData",
+            ct);
 
     public async Task<QueryResult<BaseItemDto>> GetSeasonsAsync(string seriesId, CancellationToken ct = default) =>
         await GetAsync<QueryResult<BaseItemDto>>(
@@ -181,7 +189,12 @@ public sealed class EmbyApiClient : IDisposable
         return result.Items.FirstOrDefault();
     }
 
-    public async Task<PlaybackInfoResponse> GetPlaybackInfoAsync(string itemId, CancellationToken ct = default)
+    /// <param name="autoOpenLiveStream">
+    /// 是否让服务器立刻开一条直播流。详情页只是为了读分辨率 / 码率 / 音轨这些信息，
+    /// 传 false 可以避免白白挂起一条转码会话。
+    /// </param>
+    public async Task<PlaybackInfoResponse> GetPlaybackInfoAsync(string itemId,
+        bool autoOpenLiveStream = true, CancellationToken ct = default)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, $"/Items/{itemId}/PlaybackInfo")
         {
@@ -191,7 +204,7 @@ public sealed class EmbyApiClient : IDisposable
                     UserId,
                     MaxStreamingBitrate = 1_000_000_000,
                     StartTimeTicks = 0,
-                    AutoOpenLiveStream = true
+                    AutoOpenLiveStream = autoOpenLiveStream
                 }),
                 Encoding.UTF8, "application/json")
         };
@@ -276,8 +289,32 @@ public sealed class EmbyApiClient : IDisposable
 
     private async Task<T> GetAsync<T>(string url, CancellationToken ct)
     {
+        // 元数据缓存：命中且未过期就直接用，省一次网络往返（切回首页 / 媒体库时几乎无感）
+        var ttl = TimeSpan.FromMinutes(_settings.Current.MetadataCacheMinutes);
+        var cached = CacheService.ReadMetadata(url, ttl);
+        if (cached is not null)
+        {
+            try
+            {
+                return JsonSerializer.Deserialize<T>(cached, JsonOptions)!;
+            }
+            catch
+            {
+                // 缓存文件损坏：删掉重新请求，不让整页挂掉
+                CacheService.Clear(CacheKind.Metadata);
+            }
+        }
+
         using var response = await SendAsync(new HttpRequestMessage(HttpMethod.Get, url), ct);
-        return await DeserializeAsync<T>(response);
+        var text = await response.Content.ReadAsStringAsync(ct);
+
+        if (ttl > TimeSpan.Zero)
+        {
+            CacheService.WriteMetadata(url, text);
+            CacheService.Trim(CacheKind.Metadata, CacheService.ToBytes(_settings.Current.MetadataCacheLimitMb));
+        }
+
+        return JsonSerializer.Deserialize<T>(text, JsonOptions)!;
     }
 
     private async Task PostAsync(string url, object? body, CancellationToken ct)

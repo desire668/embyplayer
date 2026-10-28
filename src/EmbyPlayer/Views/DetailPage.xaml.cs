@@ -4,6 +4,7 @@ using EmbyPlayer.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
 using Windows.Storage.Pickers;
 
@@ -26,9 +27,80 @@ public sealed partial class DetailPage : Page
             {
                 UpdateJumpButton();
             }
+
+            // 「播放已结束」这类一次性消息改成轻提示，不占页面空间
+            if (args.PropertyName == nameof(DetailViewModel.StatusText))
+            {
+                ShowToast(ViewModel.StatusText);
+            }
         };
 
         Loaded += (_, _) => UpdateJumpButton();
+    }
+
+    // ==================== 轻提示 ====================
+
+    private CancellationTokenSource? _toastCts;
+
+    /// <summary>
+    /// 底部浮一条短提示，2.4 秒后自己淡出。不参与布局，不会把页面顶长。
+    /// </summary>
+    private async void ShowToast(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text) || !IsLoaded)
+        {
+            return;
+        }
+
+        _toastCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _toastCts = cts;
+
+        ToastText.Text = text;
+        Toast.Visibility = Visibility.Visible;
+        ToastShift.Y = 10;
+
+        Animate(Toast, "Opacity", 1, 160);
+        Animate(ToastShift, "Y", 0, 200);
+
+        try
+        {
+            await Task.Delay(2400, cts.Token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        Animate(Toast, "Opacity", 0, 220);
+        try
+        {
+            await Task.Delay(230, cts.Token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        if (!cts.IsCancellationRequested)
+        {
+            Toast.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private static void Animate(DependencyObject target, string property, double to, int milliseconds)
+    {
+        var animation = new DoubleAnimation
+        {
+            To = to,
+            Duration = new Duration(TimeSpan.FromMilliseconds(milliseconds)),
+            EnableDependentAnimation = true
+        };
+        Storyboard.SetTarget(animation, target);
+        Storyboard.SetTargetProperty(animation, property);
+        var storyboard = new Storyboard();
+        storyboard.Children.Add(animation);
+        storyboard.Begin();
     }
 
     /// <summary>共享元素动画是否已接管海报（每帧只播一次）。</summary>
@@ -52,7 +124,13 @@ public sealed partial class DetailPage : Page
             itemId = param["autoplay:".Length..];
         }
 
-        if (itemId is not null)
+        // "tmdb:<id>"：媒体库里没有这部片，详情页直接用 TMDB 的在线信息渲染
+        if (param?.StartsWith("tmdb:", StringComparison.Ordinal) == true &&
+            int.TryParse(param["tmdb:".Length..], out var tmdbId))
+        {
+            _ = ViewModel.LoadTmdbAsync(tmdbId);
+        }
+        else if (itemId is not null)
         {
             _ = LoadAndMaybePlayAsync(itemId, autoPlay);
         }
@@ -101,10 +179,46 @@ public sealed partial class DetailPage : Page
         }
     }
 
-    private void Episodes_ItemClick(object sender, ItemClickEventArgs e) =>
-        ViewModel.PlayEpisodeCommand.Execute(e.ClickedItem);
+    private void Episodes_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is EpisodeRow row)
+        {
+            ViewModel.PlayEpisodeCommand.Execute(row.Item);
+        }
+    }
 
-    private void BackButton_Click(object sender, RoutedEventArgs e) => ViewModel.GoBack();
+    /// <summary>「播放源」按钮：弹出已添加的服务器列表，点哪台就用哪台播。</summary>
+    private void PlaySourceButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button || ViewModel.PlaybackSources.Count == 0)
+        {
+            return;
+        }
+
+        var flyout = new MenuFlyout();
+        var currentId = ViewModel.SelectedPlaybackSource?.ServerId;
+        foreach (var source in ViewModel.PlaybackSources)
+        {
+            var item = new ToggleMenuFlyoutItem
+            {
+                Text = source.Name,
+                IsChecked = source.ServerId == currentId
+            };
+            var option = source;
+            item.Click += (_, _) => ViewModel.SelectPlaybackSourceCommand.Execute(option);
+            flyout.Items.Add(item);
+        }
+        flyout.ShowAt(button);
+    }
+
+    /// <summary>点分类胶囊：跳媒体库并按该分类过滤。</summary>
+    private void GenreChip_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: GenreChip chip })
+        {
+            ViewModel.OpenGenreCommand.Execute(chip);
+        }
+    }
 
     /// <summary>滚动到底／回顶部的快捷跳转。</summary>
     private void JumpButton_Click(object sender, RoutedEventArgs e)

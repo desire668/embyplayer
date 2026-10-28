@@ -44,6 +44,7 @@ public partial class App : Application
         services.AddSingleton<SettingsService>();
         services.AddSingleton<EmbyApiClient>();
         services.AddSingleton<TmdbClient>();
+        services.AddSingleton<RatingsService>();
         services.AddSingleton<NavigationService>();
         services.AddSingleton<MpvController>();
         services.AddSingleton<PlaybackSessionManager>();
@@ -58,6 +59,7 @@ public partial class App : Application
         services.AddTransient<SearchViewModel>();
         services.AddTransient<ResumeViewModel>();
         services.AddTransient<FavoritesViewModel>();
+        services.AddTransient<ServersViewModel>();
         Services = services.BuildServiceProvider();
 
         // 动效开关要在任何界面创建之前生效，否则首屏会先动一下再关掉

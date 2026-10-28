@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="EmbyPlayer.Views.ServersPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:EmbyPlayer.Views"
+    xmlns:vm="using:EmbyPlayer.ViewModels">
+
+    <Grid Padding="24,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 标题 + 添加服务器 -->
+        <Grid Grid.Row="0" Margin="0,0,0,6">
+            <TextBlock Text="服务器" FontSize="24" FontWeight="Bold" VerticalAlignment="Center" />
+            <Button HorizontalAlignment="Right" VerticalAlignment="Center"
+                    Padding="14,7" Click="AddServer_Click">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon Glyph="&#xE710;" FontSize="13" />
+                    <TextBlock Text="添加服务器" FontSize="13" />
+                </StackPanel>
+            </Button>
+        </Grid>
+
+        <TextBlock Grid.Row="1" Text="{x:Bind ViewModel.Summary, Mode=OneWay}"
+                   FontSize="13" Opacity="0.6" TextWrapping="Wrap" Margin="0,0,0,14" />
+
+        <!-- 内容源按协议分组：在线服务在上，Emby 媒体服务器在下 -->
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{x:Bind ViewModel.Groups, Mode=OneWay}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ServerGroup">
+                        <StackPanel Margin="0,0,0,18" Spacing="8">
+
+                            <!-- 组标题 + 一句话说明 -->
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="{x:Bind Title}" FontSize="15" FontWeight="SemiBold" />
+                                <TextBlock Text="{x:Bind Subtitle}" FontSize="12" Opacity="0.55"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <TextBlock Text="{x:Bind EmptyHint}" FontSize="13" Opacity="0.5"
+                                       TextWrapping="Wrap" Margin="0,2,0,0"
+                                       Visibility="{x:Bind EmptyHintVisibility}" />
+
+                            <ItemsControl ItemsSource="{x:Bind Items}" Visibility="{x:Bind ItemsVisibility}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ServerListItem">
+                                        <Border Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                BorderThickness="1" CornerRadius="8" Padding="14,12"
+                                                Margin="0,0,0,8"
+                                                Tapped="ServerRow_Tapped">
+                                            <Grid ColumnSpacing="12">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <Grid Grid.Column="0" Width="40" Height="40" CornerRadius="20"
+                                                      Background="#33000000" VerticalAlignment="Center">
+                                                    <FontIcon Glyph="{x:Bind Glyph}" FontSize="17" />
+                                                </Grid>
+
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <TextBlock Text="{x:Bind Name}" FontSize="15" FontWeight="SemiBold"
+                                                                   MaxLines="1" TextTrimming="CharacterEllipsis" />
+                                                        <Border Background="#FF0A84FF" CornerRadius="9" Padding="7,1"
+                                                                VerticalAlignment="Center"
+                                                                Visibility="{x:Bind CurrentBadgeVisibility}">
+                                                            <TextBlock Text="当前" FontSize="10" Foreground="White" />
+                                                        </Border>
+                                                    </StackPanel>
+                                                    <TextBlock Text="{x:Bind Detail}" FontSize="12" Opacity="0.6"
+                                                               MaxLines="2" TextWrapping="Wrap" />
+                                                </StackPanel>
+
+                                                <!-- 协议标签：Emby / 在线 -->
+                                                <Border Grid.Column="2" VerticalAlignment="Center"
+                                                        CornerRadius="9" Padding="8,2"
+                                                        Background="#1AFFFFFF"
+                                                        BorderBrush="#33FFFFFF" BorderThickness="1">
+                                                    <TextBlock Text="{x:Bind ProtocolLabel}" FontSize="11" Opacity="0.75" />
+                                                </Border>
+
+                                                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6"
+                                                            VerticalAlignment="Center">
+                                                    <TextBlock Text="切换 ›" FontSize="12" Opacity="0.55"
+                                                               VerticalAlignment="Center"
+                                                               Visibility="{x:Bind SwitchHintVisibility}" />
+                                                    <Button Content="编辑" Click="EditServer_Click"
+                                                            Visibility="{x:Bind ManageVisibility}" />
+                                                    <Button Content="删除" Click="RemoveServer_Click"
+                                                            Visibility="{x:Bind ManageVisibility}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <!-- 退出当前账号：只删当前这条记录，其它服务器还在就自动切过去 -->
+        <local:SettingRow Grid.Row="3" Header="退出当前账号" Margin="0,8,0,0"
+                          Description="会移除当前这条服务器记录；已添加其它服务器时自动切换过去"
+                          Visibility="{x:Bind ViewModel.LogoutVisibility, Mode=OneWay}">
+            <local:SettingRow.Body>
+                <Button Content="退出登录" Click="Logout_Click" />
+            </local:SettingRow.Body>
+        </local:SettingRow>
+    </Grid>
+</Page>

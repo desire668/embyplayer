@@ -57,6 +57,15 @@ public class BaseItemDto
     /// <summary>类型标签（需要 Fields=Genres 才返回）。</summary>
     public List<string>? Genres { get; set; }
 
+    /// <summary>分级（如 "TV-14"、"R"），需要 Fields=OfficialRating 才返回。</summary>
+    public string? OfficialRating { get; set; }
+
+    /// <summary>
+    /// 外部元数据 id（Tmdb / Imdb / Tvdb 等），需要 Fields=ProviderIds 才返回。
+    /// 详情页用它去 TMDB / OMDb / Trakt 补评分。
+    /// </summary>
+    public Dictionary<string, string>? ProviderIds { get; set; }
+
     public string IndexNumberText => IndexNumber is int n ? n.ToString() : "";
 
     public string RuntimeText
@@ -96,6 +105,13 @@ public class MediaSourceInfo
     public string? Name { get; set; }
     public string? Container { get; set; }
     public long? RunTimeTicks { get; set; }
+
+    /// <summary>整条媒体源的总码率（bps），详情页「码率」用。</summary>
+    public long? Bitrate { get; set; }
+
+    /// <summary>文件体积（字节）。</summary>
+    public long? Size { get; set; }
+
     public List<MediaStreamInfo> MediaStreams { get; set; } = new();
 }
 
@@ -111,6 +127,15 @@ public class MediaStreamInfo
     public bool IsDefault { get; set; }
     public bool SupportsExternalStream { get; set; }
     public string? DeliveryUrl { get; set; }
+
+    // 详情页「媒体信息」用：分辨率 / 码率 / 声道
+    public int? Width { get; set; }
+    public int? Height { get; set; }
+    public long? BitRate { get; set; }
+    public int? Channels { get; set; }
+    public string? ChannelLayout { get; set; }
+    public int? SampleRate { get; set; }
+    public string? Profile { get; set; }
 }
 
 public class PlaybackInfoResponse

@@ -1,4 +1,4 @@
-<Page
+﻿<Page
     x:Class="EmbyPlayer.Views.HomePage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -57,11 +57,15 @@
                 <TextBlock Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
                            Visibility="{x:Bind ViewModel.ErrorMessageVisibility, Mode=OneWay}"
                            Foreground="#FFFF6B6B" FontSize="13" TextWrapping="Wrap"
-                           MaxWidth="560" HorizontalAlignment="Left" Margin="44,16,44,0" />
+                           MaxWidth="560" HorizontalAlignment="Left" Margin="92,16,44,0" />
 
-                <!-- 大图轮播：没有内容时整块隐藏，否则空的「播放/详情」按钮会浮在欢迎面板上 -->
-                <Grid Height="440"
-                      Visibility="{x:Bind ViewModel.HeroVisibility, Mode=OneWay}">
+                <!-- 大图轮播：没有内容时整块隐藏，否则空的「播放/详情」按钮会浮在欢迎面板上。
+                     整块都收指针事件：按住鼠标左键左右拖一下就能上一张 / 下一张 -->
+                <Grid x:Name="HeroHost" Height="440"
+                      Visibility="{x:Bind ViewModel.HeroVisibility, Mode=OneWay}"
+                      PointerPressed="HeroHost_PointerPressed"
+                      PointerReleased="HeroHost_PointerReleased"
+                      PointerCanceled="HeroHost_PointerCanceled">
                     <!-- 兜底底色：无背景图时也有沉稳的深色衬底 -->
                     <Rectangle>
                         <Rectangle.Fill>
@@ -72,20 +76,17 @@
                         </Rectangle.Fill>
                     </Rectangle>
 
-                    <Image Source="{x:Bind ViewModel.CurrentHero.Backdrop, Mode=OneWay}"
-                           Stretch="UniformToFill" />
+                    <!-- 大图解码完成的那一刻才通知玻璃按钮重采样：
+                         切屏时立刻采样会抓到还没解码的黑底，侧栏圆点就会发黑 -->
+                    <Image x:Name="HeroBackdrop"
+                           Source="{x:Bind ViewModel.CurrentHero.Backdrop, Mode=OneWay}"
+                           Stretch="UniformToFill"
+                           ImageOpened="HeroBackdrop_ImageOpened" />
 
-                    <!-- 暗色渐变：压住画面下方与左侧，保证文字可读 -->
-                    <Rectangle IsHitTestVisible="False">
-                        <Rectangle.Fill>
-                            <LinearGradientBrush StartPoint="0,1" EndPoint="0,0">
-                                <GradientStop Color="#E6000000" Offset="0" />
-                                <GradientStop Color="#99000000" Offset="0.3" />
-                                <GradientStop Color="#33000000" Offset="0.55" />
-                                <GradientStop Color="#00000000" Offset="0.8" />
-                            </LinearGradientBrush>
-                        </Rectangle.Fill>
-                    </Rectangle>
+                    <!-- 底部渐隐：与详情页背景图同一条曲线（下半部分一路淡到页面底色），
+                         大图与下方内容之间不再是一条硬切线；终点色 = 页面底色，衔接无缝 -->
+                    <Rectangle IsHitTestVisible="False" Fill="{ThemeResource HeroBackdropFade}" />
+                    <!-- 左侧再压一层，保证左下标题在浅色画面上也读得清 -->
                     <Rectangle IsHitTestVisible="False">
                         <Rectangle.Fill>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
@@ -104,7 +105,7 @@
 
                     <!-- 左下：推荐影片信息 -->
                     <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Left"
-                                Margin="44,0,44,36" Spacing="8" MaxWidth="620">
+                                Margin="92,0,44,36" Spacing="8" MaxWidth="620">
                         <StackPanel Orientation="Horizontal" Spacing="12">
                             <TextBlock Text="{x:Bind ViewModel.CurrentHero.MetaText, Mode=OneWay}"
                                        FontSize="13" Foreground="#CCFFFFFF" />
@@ -182,11 +183,11 @@
                     <TextBlock Text="暂无推荐内容"
                                Visibility="{x:Bind ViewModel.NoHeroVisibility, Mode=OneWay}"
                                Foreground="#B3FFFFFF" FontSize="14"
-                               Margin="44,0,44,36" VerticalAlignment="Bottom" HorizontalAlignment="Left" />
+                               Margin="92,0,44,36" VerticalAlignment="Bottom" HorizontalAlignment="Left" />
                 </Grid>
 
                 <!-- 继续播放 -->
-                <StackPanel Margin="44,20,44,24" Spacing="10"
+                <StackPanel Margin="92,20,44,24" Spacing="10"
                             Visibility="{x:Bind ViewModel.ResumeSectionVisibility, Mode=OneWay}">
                     <Grid>
                         <TextBlock Text="继续播放" FontSize="20" FontWeight="SemiBold" />
@@ -211,8 +212,8 @@
                     </ListView>
                 </StackPanel>
 
-                <!-- 海报墙：媒体库「最新上架」或「TMDB 热门推荐」 -->
-                <StackPanel Margin="44,0,44,32" Spacing="10"
+                <!-- 海报墙：媒体库「最新上架」或「TMDB 热门趋势」 -->
+                <StackPanel Margin="92,0,44,32" Spacing="10"
                             Visibility="{x:Bind ViewModel.LatestSectionVisibility, Mode=OneWay}">
                     <Grid>
                         <TextBlock Text="{x:Bind ViewModel.WallTitle, Mode=OneWay}"
@@ -225,6 +226,35 @@
                     <ListView x:Name="LatestList"
                               Background="Transparent"
                               ItemsSource="{x:Bind ViewModel.LatestItems, Mode=OneWay}"
+                              SelectionMode="None" IsItemClickEnabled="True"
+                              ItemClick="LatestList_ItemClick"
+                              ScrollViewer.HorizontalScrollMode="Enabled"
+                              ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                              ScrollViewer.VerticalScrollMode="Disabled">
+                        <ListView.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ListView.ItemsPanel>
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ItemCard">
+                                <local:PosterCard Card="{x:Bind}" />
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </StackPanel>
+
+                <!-- 受欢迎的影片（TMDB popular，与热门趋势不同的一批片） -->
+                <StackPanel Margin="92,0,44,32" Spacing="10"
+                            Visibility="{x:Bind ViewModel.PopularSectionVisibility, Mode=OneWay}">
+                    <Grid>
+                        <TextBlock Text="{x:Bind ViewModel.PopularTitle, Mode=OneWay}"
+                                   FontSize="20" FontWeight="SemiBold" />
+                    </Grid>
+
+                    <ListView x:Name="PopularList"
+                              Background="Transparent"
+                              ItemsSource="{x:Bind ViewModel.PopularItems, Mode=OneWay}"
                               SelectionMode="None" IsItemClickEnabled="True"
                               ItemClick="LatestList_ItemClick"
                               ScrollViewer.HorizontalScrollMode="Enabled"
@@ -267,7 +297,7 @@
                         ToolTipService.ToolTip="没有 Emby 服务器时，用免费的 TMDB Key 也能看在线推荐海报墙" />
             </StackPanel>
             <TextBlock Opacity="0.5" FontSize="12" TextAlignment="Center" TextWrapping="Wrap"
-                       Text="TMDB Key 免费申请，只保存在本机，不会上传到任何地方。也可以稍后在「设置 → 在线内容（TMDB）」里修改。" />
+                       Text="TMDB Key 免费申请，只保存在本机，不会上传到任何地方。也可以稍后在「设置 → 外部服务」里修改。" />
         </StackPanel>
     </Grid>
 </Page>

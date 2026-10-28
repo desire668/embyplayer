@@ -82,9 +82,11 @@ public sealed class PlaybackSessionManager
     }
 
     public async Task<PlaybackSession> StartAsync(BaseItemDto item, MediaSourceInfo source,
-        string? playSessionId, double resumeSeconds)
+        string? playSessionId, double resumeSeconds, EmbyApiClient? client = null)
     {
-        var session = new PlaybackSession(_api, _settings.Current.UserId ?? "", item, source, playSessionId);
+        // client 非空 = 用户选了别的播放源：进度要报到那台服务器，不能报回当前服务器
+        var session = new PlaybackSession(client ?? _api,
+            client?.UserId ?? _settings.Current.UserId ?? "", item, source, playSessionId);
         await session.ReportPlayingAsync(resumeSeconds);
         Current = session;
         return session;

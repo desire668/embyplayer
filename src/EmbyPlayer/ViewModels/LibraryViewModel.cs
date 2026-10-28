@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using EmbyPlayer.Animations;
 using EmbyPlayer.Models;
 using EmbyPlayer.Services;
@@ -9,6 +10,12 @@ namespace EmbyPlayer.ViewModels;
 
 /// <summary>表示 Emby API 的一个排序字段选项。</summary>
 public record SortOption(string Key, string Display);
+
+/// <summary>
+/// 从详情页点分类跳过来时带的条件：按该分类过滤，并优先切到对应类型的媒体库
+/// （CollectionType 为 "movies" / "tvshows"）。
+/// </summary>
+public sealed record LibraryFilter(string? Genre, string? CollectionType = null);
 
 public partial class LibraryViewModel : ObservableObject
 {
@@ -85,13 +92,40 @@ public partial class LibraryViewModel : ObservableObject
     /// <summary>升降序按钮的显示文本。</summary>
     public string SortOrderDisplay => SortAscending ? "↑ 升序" : "↓ 降序";
 
+    /// <summary>当前生效的分类过滤（来自详情页的分类胶囊）；null 表示不过滤。</summary>
+    [ObservableProperty]
+    private string? _genreFilter;
+
+    public Microsoft.UI.Xaml.Visibility FilterVisibility =>
+        string.IsNullOrEmpty(GenreFilter) ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
+
+    partial void OnGenreFilterChanged(string? value)
+    {
+        OnPropertyChanged(nameof(FilterVisibility));
+        if (!string.IsNullOrEmpty(value) && SelectedView is not null)
+        {
+            RequestReload();
+        }
+    }
+
+    [RelayCommand]
+    private void ClearGenreFilter()
+    {
+        if (string.IsNullOrEmpty(GenreFilter))
+        {
+            return;
+        }
+        GenreFilter = null;
+        RequestReload();
+    }
+
     public LibraryViewModel(EmbyApiClient api, NavigationService navigation)
     {
         _api = api;
         _navigation = navigation;
     }
 
-    public async Task InitializeAsync()
+    public async Task InitializeAsync(LibraryFilter? filter = null)
     {
         ErrorMessage = null;
         IsLoading = true;
@@ -100,7 +134,19 @@ public partial class LibraryViewModel : ObservableObject
             var views = await _api.GetViewsAsync();
             Views = new ObservableCollection<ViewInfo>(
                 views.Select(v => new ViewInfo(v.Id, v.Name, v.CollectionType)));
-            if (SelectedView is null && Views.Count > 0)
+
+            // 分类过滤：先定过滤条件，再切到对应类型的媒体库（切换本身会触发一次加载）
+            GenreFilter = string.IsNullOrWhiteSpace(filter?.Genre) ? null : filter!.Genre;
+
+            var preferred = string.IsNullOrEmpty(filter?.CollectionType)
+                ? null
+                : Views.FirstOrDefault(v => v.CollectionType == filter!.CollectionType);
+
+            if (preferred is not null)
+            {
+                SelectedView = preferred;
+            }
+            else if (SelectedView is null && Views.Count > 0)
             {
                 SelectedView = Views[0];
             }
@@ -209,7 +255,7 @@ public partial class LibraryViewModel : ObservableObject
                 _ => "Movie,Series"
             };
             var result = await _api.GetItemsAsync(view.Id, types,
-                sortBy: sortBy, sortOrder: sortOrder, ct: linked.Token);
+                sortBy: sortBy, sortOrder: sortOrder, genres: GenreFilter, ct: linked.Token);
             if (linked.IsCancellationRequested)
             {
                 return;

@@ -9,6 +9,13 @@ public sealed class PlaybackPlan
     public required MediaSourceInfo Source { get; init; }
     public required string StreamUrl { get; init; }
     public List<MediaStreamInfo> SubtitleStreams { get; init; } = new();
+
+    /// <summary>
+    /// 取这条播放计划用的 API 客户端。为空表示用当前服务器；
+    /// 用户在详情页选了别的「播放源」时，这里是被选中服务器的独立客户端，
+    /// 流地址与播放进度上报都会走那台服务器。
+    /// </summary>
+    public EmbyApiClient? Client { get; init; }
 }
 
 /// <summary>
@@ -22,6 +29,12 @@ public sealed class PlaybackService
     private readonly MpvController _controller;
     private readonly PlaybackSessionManager _sessions;
     private bool _handlersWired;
+
+    /// <summary>最近一次播放用的客户端（播放源不是当前服务器时非空）。</summary>
+    private EmbyApiClient? _lastClient;
+
+    /// <summary>当前会话实际使用的客户端：跟随「播放源」，缺省回落到当前服务器。</summary>
+    private EmbyApiClient SessionClient => _lastClient ?? _api;
 
     public MpvController Controller => _controller;
 
@@ -37,9 +50,14 @@ public sealed class PlaybackService
         _sessions = sessions;
     }
 
-    public async Task<PlaybackPlan> PrepareAsync(BaseItemDto item)
+    /// <summary>
+    /// 取播放计划。<paramref name="client"/> 传其它服务器的客户端时，
+    /// 整条链路（流地址、字幕、进度上报）都走那台服务器。
+    /// </summary>
+    public async Task<PlaybackPlan> PrepareAsync(BaseItemDto item, EmbyApiClient? client = null)
     {
-        var info = await _api.GetPlaybackInfoAsync(item.Id);
+        var api = client ?? _api;
+        var info = await api.GetPlaybackInfoAsync(item.Id);
         if (!string.IsNullOrEmpty(info.ErrorCode))
         {
             throw new InvalidOperationException($"无法播放：{info.ErrorCode}");
@@ -51,8 +69,9 @@ public sealed class PlaybackService
             Item = item,
             Info = info,
             Source = source,
-            StreamUrl = _api.BuildStreamUrl(item.Id, source.Id, info.PlaySessionId),
-            SubtitleStreams = source.MediaStreams.Where(s => s.Type == "Subtitle").ToList()
+            StreamUrl = api.BuildStreamUrl(item.Id, source.Id, info.PlaySessionId),
+            SubtitleStreams = source.MediaStreams.Where(s => s.Type == "Subtitle").ToList(),
+            Client = client
         };
     }
 
@@ -66,7 +85,9 @@ public sealed class PlaybackService
         var resumeSeconds = GetResumeSeconds(plan.Item);
         var subtitlePath = await PrepareSubtitleFileAsync(plan, subtitle);
 
-        await _sessions.StartAsync(plan.Item, plan.Source, plan.Info.PlaySessionId, resumeSeconds);
+        // 播放源可能不是当前服务器：流地址、字幕与进度上报统一用它自己的客户端
+        _lastClient = plan.Client;
+        await _sessions.StartAsync(plan.Item, plan.Source, plan.Info.PlaySessionId, resumeSeconds, plan.Client);
 
         if (_controller.IsRunning)
         {
@@ -117,8 +138,7 @@ public sealed class PlaybackService
             return null;
         }
         var url = _api.BuildSubtitleUrl(plan.Item.Id, plan.Source.Id, stream);
-        var dir = Path.Combine(Path.GetTempPath(), "EmbyPlayer");
-        Directory.CreateDirectory(dir);
+        var dir = CacheService.DirectoryOf(CacheKind.Playback);
         var path = Path.Combine(dir, $"{plan.Item.Id}_{stream.Index}.srt");
         await _api.DownloadSubtitleAsync(url, path);
         return path;
@@ -173,11 +193,11 @@ public sealed class PlaybackService
 
         if (_settings.Current.AutoPlayNext && item.Type == "Episode" && !string.IsNullOrEmpty(item.SeriesId))
         {
-            var next = await _api.GetNextUpAsync(item.SeriesId!);
+            var next = await SessionClient.GetNextUpAsync(item.SeriesId!);
             if (next is not null && next.Id != item.Id)
             {
                 StatusChanged?.Invoke($"自动播放下一集：{next.Name}");
-                var plan = await PrepareAsync(next);
+                var plan = await PrepareAsync(next, _lastClient);
                 await PlayAsync(plan, subtitle: null);
                 return;
             }

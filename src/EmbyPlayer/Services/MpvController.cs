@@ -21,6 +21,10 @@ public sealed class MpvLaunchOptions
 /// </summary>
 public sealed class MpvController : IDisposable
 {
+    private readonly SettingsService _settings;
+
+    public MpvController(SettingsService settings) => _settings = settings;
+
     /// <summary>播放位置变化（秒）。</summary>
     public event Action<double>? PositionChanged;
 
@@ -95,8 +99,12 @@ public sealed class MpvController : IDisposable
         psi.ArgumentList.Add("--no-terminal");
         psi.ArgumentList.Add("--idle=yes");
         psi.ArgumentList.Add("--force-window=yes");
+        // 无边框：去掉 Windows 标题栏与边框（图标、标题文字随之消失），画面直接铺满整个窗口
+        psi.ArgumentList.Add("--border=no");
         // 由本应用负责断点续播，禁用 mpv 自带的 watch_later
         psi.ArgumentList.Add("--no-resume-playback");
+        // 设置页里的可视化选项（硬件解码 / 缓存 / 音量 / 字幕样式 / 高级参数）
+        AppendConfiguredArgs(psi);
         psi.ArgumentList.Add($"--input-ipc-server=\\\\.\\pipe\\{pipeName}");
         if (!string.IsNullOrEmpty(options.Title))
         {
@@ -283,6 +291,85 @@ public sealed class MpvController : IDisposable
         PlayerClosed?.Invoke();
     }
 
+    /// <summary>
+    /// 把设置页里的可视化选项翻译成 mpv 命令行参数。
+    /// 只在与 mpv 默认值不同时才追加，避免把默认行为写死（以后 mpv 升级改了默认值也不会被压住）。
+    /// 额外参数放在最后，方便高级用户覆盖上面任何一项。
+    /// </summary>
+    private void AppendConfiguredArgs(ProcessStartInfo psi)
+    {
+        var s = _settings.Current;
+
+        if (!string.IsNullOrWhiteSpace(s.MpvHwdec) &&
+            !string.Equals(s.MpvHwdec, "auto-safe", StringComparison.OrdinalIgnoreCase))
+        {
+            psi.ArgumentList.Add($"--hwdec={s.MpvHwdec}");
+        }
+
+        if (s.MpvCacheSeconds > 0)
+        {
+            psi.ArgumentList.Add("--cache=yes");
+            psi.ArgumentList.Add($"--cache-secs={s.MpvCacheSeconds}");
+        }
+        else
+        {
+            // 关闭预读缓存：网络串流仍保留 demuxer 自身的缓冲，避免起播更慢
+            psi.ArgumentList.Add("--cache=no");
+        }
+
+        if (s.MpvVolume is >= 0 and <= 100 && s.MpvVolume != 100)
+        {
+            psi.ArgumentList.Add($"--volume={s.MpvVolume}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(s.MpvAudioLang))
+        {
+            psi.ArgumentList.Add($"--alang={s.MpvAudioLang}");
+        }
+
+        if (Math.Abs(s.MpvSubFontSize - 55) > 0.01)
+        {
+            psi.ArgumentList.Add($"--sub-font-size={s.MpvSubFontSize:0.#}");
+        }
+
+        if (Math.Abs(s.MpvSubBorderSize - 3) > 0.01)
+        {
+            psi.ArgumentList.Add($"--sub-border-size={s.MpvSubBorderSize:0.##}");
+        }
+
+        if (Math.Abs(s.MpvSubPos - 100) > 0.01)
+        {
+            psi.ArgumentList.Add($"--sub-pos={s.MpvSubPos:0.#}");
+        }
+
+        // 自定义快捷键：每次启动前重写 input.conf，只覆盖设置页里列出的键
+        psi.ArgumentList.Add($"--input-conf={MpvShortcuts.EnsureInputConfFile(s)}");
+
+        foreach (var arg in ParseExtraArgs(s.MpvExtraArgs))
+        {
+            psi.ArgumentList.Add(arg);
+        }
+    }
+
+    /// <summary>把高级参数文本框拆成命令行参数：空格分隔，缺省 -- 前缀自动补齐，支持用引号包住带空格的值。</summary>
+    private static IEnumerable<string> ParseExtraArgs(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            yield break;
+        }
+
+        foreach (var token in raw.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var cleaned = token.Trim().Trim('"');
+            if (cleaned.Length == 0)
+            {
+                continue;
+            }
+            yield return cleaned.StartsWith('-') ? cleaned : "--" + cleaned;
+        }
+    }
+
     private async Task SendCommandAsync(object[] command)
     {
         if (_writer is null)
@@ -323,7 +410,7 @@ local function toggle_danmaku()
         mp.osd_message("弹幕：无弹幕轨", 2)
         return
     end
-    local cur = mp.get_property_number("sid", -1)
+            local cur = mp.get_property_number("sid", -1)
     if cur == id then
         mp.set_property("sid", "no")
         mp.osd_message("弹幕：关", 2)
@@ -333,11 +420,11 @@ local function toggle_danmaku()
     end
 end
 
-mp.add_key_binding("MBTN_RIGHT", "toggle_danmaku", toggle_danmaku)
-mp.add_key_binding("d", "toggle_danmaku_key", toggle_danmaku)
+-- 右键留给右键菜单（menu.conf 里的「弹幕 → 开启 / 关闭」会调到这里），
+-- 键盘快捷键由设置页生成到 input.conf，通过 script-message 调过来
+mp.register_script_message("toggle-danmaku", toggle_danmaku)
 """;
-        var dir = Path.Combine(Path.GetTempPath(), "EmbyPlayer");
-        Directory.CreateDirectory(dir);
+        var dir = CacheService.DirectoryOf(CacheKind.Playback);
         var path = Path.Combine(dir, "danmaku_toggle.lua");
         File.WriteAllText(path, lua);
         return path;

@@ -1,7 +1,8 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EmbyPlayer.Animations;
+using EmbyPlayer.LiquidGlass;
 using EmbyPlayer.Models;
 using EmbyPlayer.Services;
 using EmbyPlayer.Views;
@@ -88,6 +89,14 @@ public partial class HomeViewModel : ObservableObject
     [ObservableProperty]
     private ObservableCollection<ItemCard> _latestItems = new();
 
+    /// <summary>「受欢迎的影片」海报墙：TMDB popular，与热门趋势不同的一批片。</summary>
+    [ObservableProperty]
+    private ObservableCollection<ItemCard> _popularItems = new();
+
+    /// <summary>「受欢迎的影片」标题（固定文案，行里没有「全部 ›」）。</summary>
+    [ObservableProperty]
+    private string _popularTitle = "受欢迎的影片";
+
     [ObservableProperty]
     private bool _isLoading;
 
@@ -98,7 +107,7 @@ public partial class HomeViewModel : ObservableObject
     [ObservableProperty]
     private bool _isTmdbSource;
 
-    /// <summary>海报墙标题：TMDB 源显示「TMDB 热门推荐」，媒体库源显示「最新上架」。</summary>
+    /// <summary>海报墙标题：TMDB 源显示「热门趋势」，媒体库源显示「最新上架」。</summary>
     [ObservableProperty]
     private string _wallTitle = "最新上架";
 
@@ -135,9 +144,13 @@ public partial class HomeViewModel : ObservableObject
     public Visibility ResumeSectionVisibility =>
         IsLoggedIn && ResumeItems.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-    /// <summary>「最新上架 / TMDB 热门推荐」海报墙整块的可见性。</summary>
+    /// <summary>「最新上架 / TMDB 热门趋势」海报墙整块的可见性。</summary>
     public Visibility LatestSectionVisibility =>
         LatestItems.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>「受欢迎的影片」整块的可见性。</summary>
+    public Visibility PopularSectionVisibility =>
+        PopularItems.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>海报墙右上角「全部 ›」：TMDB 源没有对应的媒体库列表页，隐藏。</summary>
     public Visibility ShowAllLatestVisibility =>
@@ -154,6 +167,8 @@ public partial class HomeViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(CurrentHero));
         RebuildDots();
+        // 大图换了：悬浮侧栏的玻璃按钮要重新采样背后的画面
+        GlassRefresh.Request();
     }
 
     partial void OnIsLoggedInChanged(bool value)
@@ -165,26 +180,32 @@ public partial class HomeViewModel : ObservableObject
         OnPropertyChanged(nameof(NoHeroVisibility));
         OnPropertyChanged(nameof(ResumeSectionVisibility));
         OnPropertyChanged(nameof(LatestSectionVisibility));
+        OnPropertyChanged(nameof(PopularSectionVisibility));
         OnPropertyChanged(nameof(ShowAllLatestVisibility));
     }
 
     partial void OnIsTmdbSourceChanged(bool value)
     {
-        WallTitle = value ? "TMDB 热门推荐" : "最新上架";
+        WallTitle = value ? "热门趋势" : "最新上架";
         OnPropertyChanged(nameof(ShowAllLatestVisibility));
     }
 
     public async Task InitializeAsync()
     {
+        // 记下来源：用户切了服务器 / 在线推荐后，页面重新显示时要再拉一次
+        _loadedSourceKey = _settings.CurrentSourceKey;
         IsTmdbSource = _settings.IsTmdbSource;
-        WallTitle = IsTmdbSource ? "TMDB 热门推荐" : "最新上架";
+        WallTitle = IsTmdbSource ? "热门趋势" : "最新上架";
         _trending = null;
+        _popular = null;
         IsLoggedIn = _settings.IsLoggedIn;
         ErrorMessage = null;
         ResumeItems.Clear();
         LatestItems = new ObservableCollection<ItemCard>();
+        PopularItems = new ObservableCollection<ItemCard>();
         OnPropertyChanged(nameof(ResumeSectionVisibility));
         OnPropertyChanged(nameof(LatestSectionVisibility));
+        OnPropertyChanged(nameof(PopularSectionVisibility));
         OnPropertyChanged(nameof(ShowAllLatestVisibility));
 
         IsLoading = true;
@@ -198,7 +219,7 @@ public partial class HomeViewModel : ObservableObject
             {
                 if (!_tmdb.HasApiKey)
                 {
-                    ErrorMessage = "使用「TMDB 在线推荐」前，请先在「设置 → 在线内容（TMDB）」里填写 API Key。";
+                    ErrorMessage = "使用「TMDB 在线推荐」前，请先在「设置 → 外部服务」里填写 TMDB API Key。";
                 }
                 else
                 {
@@ -206,6 +227,17 @@ public partial class HomeViewModel : ObservableObject
                     {
                         heroes = await BuildTmdbHeroesAsync();
                         posters = await BuildTmdbWallAsync();
+                        // 受欢迎的影片与热门趋势不同源，多给一行选择；失败不影响首屏
+                        try
+                        {
+                            PopularItems = new ObservableCollection<ItemCard>(
+                                await BuildTmdbPopularWallAsync(posters));
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"受欢迎的影片加载失败：{ex.Message}");
+                        }
+                        OnPropertyChanged(nameof(PopularSectionVisibility));
                     }
                     catch (Exception ex)
                     {
@@ -244,8 +276,14 @@ public partial class HomeViewModel : ObservableObject
                     if (LatestItems.Count == 0)
                     {
                         LatestItems = new ObservableCollection<ItemCard>(await BuildTmdbWallAsync());
-                        WallTitle = "TMDB 热门推荐";
+                        WallTitle = "热门趋势";
                         OnPropertyChanged(nameof(LatestSectionVisibility));
+                    }
+                    if (PopularItems.Count == 0)
+                    {
+                        PopularItems = new ObservableCollection<ItemCard>(
+                            await BuildTmdbPopularWallAsync(LatestItems));
+                        OnPropertyChanged(nameof(PopularSectionVisibility));
                     }
                 }
                 catch (Exception)
@@ -293,6 +331,16 @@ public partial class HomeViewModel : ObservableObject
     /// <summary>一次加载周期内复用 TMDB 热门列表：轮播与海报墙用同一批数据，不重复请求。</summary>
     private List<TmdbMovie>? _trending;
 
+    /// <summary>上次拉首屏时用的内容源（服务器 ID 或 "tmdb"）。</summary>
+    private string? _loadedSourceKey;
+
+    /// <summary>
+    /// 内容源是否已经变了（在「服务器」页或设置里切了服务器 / 在线推荐）。
+    /// 首页是缓存页面，重新显示时据此判断要不要再拉一次首屏，否则会一直显示旧服务器的内容。
+    /// </summary>
+    public bool IsSourceChanged =>
+        !string.Equals(_loadedSourceKey, _settings.CurrentSourceKey, StringComparison.Ordinal);
+
     private async Task<List<TmdbMovie>> LoadTrendingAsync()
     {
         if (_trending is not null)
@@ -314,10 +362,38 @@ public partial class HomeViewModel : ObservableObject
             .ToList();
     }
 
-    private static ItemCard BuildTmdbCard(TmdbMovie movie)
+    /// <summary>一次加载周期内复用 TMDB popular 列表。</summary>
+    private List<TmdbMovie>? _popular;
+
+    private async Task<List<TmdbMovie>> LoadPopularAsync()
     {
-        var posterUrl = TmdbClient.GetImageUrl(movie.PosterPath, 400);
-        var posterFallback = TmdbClient.GetFallbackImageUrl(movie.PosterPath, 400);
+        if (_popular is not null)
+        {
+            return _popular;
+        }
+        _popular = await _tmdb.GetPopularAsync();
+        return _popular;
+    }
+
+    /// <summary>
+    /// 「受欢迎的影片」：TMDB popular，与热门趋势不同的一批片。
+    /// exclude 里出现过的（已在热门趋势一行）不再重复展示。
+    /// </summary>
+    private async Task<List<ItemCard>> BuildTmdbPopularWallAsync(IEnumerable<ItemCard>? exclude = null)
+    {
+        var popular = await LoadPopularAsync();
+        var seen = new HashSet<int>(exclude?.Select(c => c.TmdbId ?? 0) ?? Enumerable.Empty<int>());
+        return popular
+            .Where(m => !string.IsNullOrEmpty(m.PosterPath) && !seen.Contains(m.Id))
+            .Take(24)
+            .Select(BuildTmdbCard)
+            .ToList();
+    }
+
+    private ItemCard BuildTmdbCard(TmdbMovie movie)
+    {
+        var posterUrl = _tmdb.GetImageUrl(movie.PosterPath, 400);
+        var posterFallback = _tmdb.GetFallbackImageUrl(movie.PosterPath, 400);
         var year = movie.ReleaseDate is { Length: >= 4 } date ? date[..4] : null;
 
         return new ItemCard
@@ -375,7 +451,7 @@ public partial class HomeViewModel : ObservableObject
 
             // 没有背景图的条目用竖版海报当背景（横版容器会裁切，但比纯黑好）
             var imagePath = !string.IsNullOrEmpty(movie.BackdropPath) ? movie.BackdropPath : movie.PosterPath;
-            var imageUrl = TmdbClient.GetImageUrl(imagePath);
+            var imageUrl = _tmdb.GetImageUrl(imagePath);
             heroes.Add(new HeroItem
             {
                 Name = string.IsNullOrWhiteSpace(movie.Title) ? movie.OriginalTitle ?? "未知影片" : movie.Title!,
@@ -388,7 +464,7 @@ public partial class HomeViewModel : ObservableObject
                 Backdrop = imageUrl is null
                     ? null
                     : CreateBackdropImage(imageUrl,
-                        TmdbClient.GetFallbackImageUrl(imagePath, TmdbClient.BackdropWidth))
+                        _tmdb.GetFallbackImageUrl(imagePath, TmdbClient.BackdropWidth))
             });
         }
         return heroes;
@@ -606,8 +682,8 @@ public partial class HomeViewModel : ObservableObject
         Dots = new ObservableCollection<HeroDot>(dots);
     }
 
-    /// <summary>大图自动轮播间隔（秒）；页面按它驱动轮播与指示条进度。</summary>
-    public const double HeroAutoPlaySeconds = 12.0;
+    /// <summary>大图自动轮播间隔（秒）；0 表示不自动切换。取值来自设置页，页面按它驱动轮播与指示条进度。</summary>
+    public double HeroIntervalSeconds => Math.Max(0, _settings.Current.HeroAutoPlaySeconds);
 
     /// <summary>轮播进度 0~1：当前指示条按此比例填充，直观显示还要多久切下一张。</summary>
     public void UpdateHeroProgress(double ratio)
@@ -721,7 +797,10 @@ public partial class HomeViewModel : ObservableObject
         _navigation.NavigateTo<DetailPage>("autoplay:" + match.Id);
     }
 
-    /// <summary>大图「详情」：媒体库命中进 Emby 详情页；否则打开 TMDB 网页详情。</summary>
+    /// <summary>
+    /// 大图「详情」：媒体库命中进 Emby 详情页；没命中也留在应用里，
+    /// 用 TMDB 的在线信息渲染详情页，不再跳到 the moviedb 网站。
+    /// </summary>
     [RelayCommand]
     private async Task OpenHeroDetailAsync()
     {
@@ -746,9 +825,9 @@ public partial class HomeViewModel : ObservableObject
             }
         }
 
-        if (hero.TmdbPageUrl is { } url)
+        if (hero.TmdbId is int id)
         {
-            await Launcher.LaunchUriAsync(new Uri(url));
+            _navigation.NavigateTo<DetailPage>($"tmdb:{id}");
         }
     }
 
@@ -803,7 +882,7 @@ public partial class HomeViewModel : ObservableObject
 
     /// <summary>
     /// TMDB 海报卡片：已连接服务器时按片名在媒体库里找对应条目，命中直接进详情；
-    /// 未命中（或没连服务器）则打开 TMDB 网页详情。
+    /// 未命中（或没连服务器）也进详情页，只是内容换成 TMDB 的在线信息，不打开网页。
     /// </summary>
     private async Task OpenTmdbCardAsync(ItemCard card)
     {
@@ -817,12 +896,12 @@ public partial class HomeViewModel : ObservableObject
                 _navigation.NavigateTo<DetailPage>(match.Id, FluidNavigation.PosterPush);
                 return;
             }
-            ErrorMessage = $"媒体库中未找到《{card.Name}》，已打开 TMDB 页面。";
+            ErrorMessage = $"媒体库中未找到《{card.Name}》，显示的是 TMDB 在线信息。";
         }
 
-        if (card.TmdbPageUrl is { } url)
+        if (card.TmdbId is int id)
         {
-            await Launcher.LaunchUriAsync(new Uri(url));
+            _navigation.NavigateTo<DetailPage>($"tmdb:{id}", FluidNavigation.PosterPush);
         }
     }
 

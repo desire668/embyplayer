@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="EmbyPlayer.Views.RailButton"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- 根不铺背景：只有按钮本身那块可点，右侧文字标签伸出去也不抢点击 -->
+    <Grid x:Name="Root">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <!-- 云母（Mica / Acrylic）按钮：材质底 + 斜向光泽描边 + 顶部高光 + 图标。
+             嵌进竖长胶囊时宽度收窄成胶囊形（见 ApplyPillMode），上下贴边、左右留缝。
+             命中范围就是这一块，与看到的按钮一样大 -->
+        <Grid x:Name="Circle" Grid.Column="0" Width="46" Height="46" Background="Transparent">
+            <!-- 云母材质：跟随主题的亚克力笔刷；嵌进胶囊时整层隐去，由胶囊外壳提供材质 -->
+            <Ellipse x:Name="Material" Fill="{ThemeResource RailMicaFill}"
+                     Stroke="{ThemeResource RailGlossStroke}" StrokeThickness="1" />
+
+            <!-- 光泽：斜向渐隐的一层高光，边缘不再是完整一圈突兀的白线 -->
+            <Ellipse x:Name="Gloss" Margin="1" IsHitTestVisible="False"
+                     Fill="{ThemeResource RailGlossHighlight}" />
+
+            <!-- 悬停反馈：极淡的一层，配合图标放大 -->
+            <Ellipse x:Name="HoverTint" Margin="1" IsHitTestVisible="False" Opacity="0"
+                     Fill="{ThemeResource RailHoverTint}" />
+
+            <!-- 当前所在页面：一层中性浅灰，出现时从中间弹开（缩放 + 淡入），不是硬切 -->
+            <Ellipse x:Name="ActiveTint" Margin="1" IsHitTestVisible="False" Opacity="0"
+                     Fill="{ThemeResource RailActiveTint}"
+                     RenderTransformOrigin="0.5,0.5">
+                <Ellipse.RenderTransform>
+                    <ScaleTransform x:Name="ActiveScale" ScaleX="0.72" ScaleY="0.72" />
+                </Ellipse.RenderTransform>
+            </Ellipse>
+
+            <FontIcon x:Name="Icon" Glyph="{x:Bind Glyph, Mode=OneWay}"
+                      FontSize="18" Foreground="White" IsHitTestVisible="False"
+                      RenderTransformOrigin="0.5,0.5">
+                <FontIcon.RenderTransform>
+                    <ScaleTransform x:Name="IconScale" ScaleX="1" ScaleY="1" />
+                </FontIcon.RenderTransform>
+            </FontIcon>
+        </Grid>
+
+        <!-- 悬停时从图标右侧滑出的文字说明（嵌在胶囊里时不显示，避免盖住相邻按钮） -->
+        <Border x:Name="LabelHost" Grid.Column="1" Margin="12,0,0,0"
+                HorizontalAlignment="Left" VerticalAlignment="Center"
+                Background="{ThemeResource BreadcrumbFill}"
+                BorderBrush="{ThemeResource BreadcrumbStroke}" BorderThickness="1"
+                CornerRadius="14" Padding="14,6"
+                Opacity="0" IsHitTestVisible="False">
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="LabelShift" X="-6" />
+            </Border.RenderTransform>
+            <TextBlock Text="{x:Bind Label, Mode=OneWay}" FontSize="13"
+                       Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+        </Border>
+    </Grid>
+</UserControl>

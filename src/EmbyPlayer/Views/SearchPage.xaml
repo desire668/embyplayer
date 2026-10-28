@@ -2,24 +2,155 @@
     x:Class="EmbyPlayer.Views.SearchPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:EmbyPlayer.Views">
+    xmlns:anim="using:EmbyPlayer.Animations"
+    xmlns:local="using:EmbyPlayer.Views"
+    xmlns:vm="using:EmbyPlayer.ViewModels">
 
     <Grid Padding="24,16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <AutoSuggestBox Grid.Row="0" x:Name="SearchBox" QueryIcon="Find"
-                        PlaceholderText="搜索所有服务器的电影 / 剧集 / 单集…"
-                        MaxWidth="600" HorizontalAlignment="Left"
-                        TextChanged="SearchBox_TextChanged"
-                        QuerySubmitted="SearchBox_QuerySubmitted" />
+        <!-- 搜索框：胶囊形，水平居中在页面顶部 -->
+        <Border x:Name="SearchPill" Grid.Row="0" Width="520" Height="46" CornerRadius="23"
+                HorizontalAlignment="Center" VerticalAlignment="Center"
+                Background="{ThemeResource BreadcrumbFill}"
+                BorderBrush="{ThemeResource BreadcrumbStroke}" BorderThickness="1"
+                Padding="18,0" Margin="0,4,0,4">
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-        <local:MediaGridControl Grid.Row="1"
-                                Items="{x:Bind ViewModel.Items, Mode=OneWay}"
-                                IsLoading="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
-                                ErrorMessage="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
-                                ItemChosen="OnItemChosen" />
+                <TextBox x:Name="SearchBox" Grid.Column="0"
+                         BorderThickness="0" Background="Transparent"
+                         PlaceholderText="搜索所有服务器的电影 / 剧集 / 单集…"
+                         FontSize="15" VerticalAlignment="Center"
+                         TextChanged="SearchBox_TextChanged"
+                         KeyDown="SearchBox_KeyDown"
+                         GotFocus="SearchBox_GotFocus">
+                    <TextBox.Resources>
+                        <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+                        <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                        <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                        <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+                        <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                        <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+                        <SolidColorBrush x:Key="TextControlElevationBorderBrush" Color="Transparent" />
+                        <SolidColorBrush x:Key="TextControlElevationBorderFocusedBrush" Color="Transparent" />
+                    </TextBox.Resources>
+                </TextBox>
+
+                <Button x:Name="SearchGoButton" Grid.Column="1" Width="32" Height="32"
+                        Padding="0" CornerRadius="16" Background="Transparent"
+                        BorderThickness="0" Click="SearchGo_Click"
+                        ToolTipService.ToolTip="搜索">
+                    <FontIcon Glyph="&#xE721;" FontSize="15" />
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- 历史搜索（下拉式）：输入框为空时展开；点词条直接搜，点叉只删这一条，「清空」整份清掉 -->
+        <Border x:Name="HistoryCard" Grid.Row="1" Width="520" CornerRadius="14"
+                HorizontalAlignment="Center" Margin="0,10,0,0"
+                Background="{ThemeResource BreadcrumbFill}"
+                BorderBrush="{ThemeResource BreadcrumbStroke}" BorderThickness="1"
+                Padding="12,10,12,12" Visibility="Collapsed">
+            <StackPanel Spacing="2">
+                <Grid Margin="4,0,4,2">
+                    <TextBlock Text="搜索" FontSize="12" Opacity="0.55"
+                               VerticalAlignment="Center" />
+                    <HyperlinkButton Content="清空" HorizontalAlignment="Right"
+                                     Padding="8,2" FontSize="12" Opacity="0.85"
+                                     Command="{x:Bind ViewModel.ClearHistoryCommand}" />
+                </Grid>
+                <ItemsControl ItemsSource="{x:Bind ViewModel.SearchHistory, Mode=OneWay}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <Grid Height="38" Margin="0,2,0,0" CornerRadius="10"
+                                  Background="{ThemeResource GenreChipBackground}"
+                                  Tag="{x:Bind}" Tapped="HistoryItem_Tapped">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{x:Bind}" Grid.Column="0"
+                                           FontSize="15" Margin="14,0,0,0"
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" />
+                                <Button Grid.Column="1" Width="34" Height="34"
+                                        Padding="0" Margin="0,0,2,0"
+                                        CornerRadius="17" Background="Transparent"
+                                        BorderThickness="0" Tag="{x:Bind}"
+                                        Click="RemoveHistoryItem_Click"
+                                        Tapped="RemoveHistoryItem_Tapped"
+                                        ToolTipService.ToolTip="删除这条记录">
+                                    <FontIcon Glyph="&#xE711;" FontSize="11" Opacity="0.7" />
+                                </Button>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <!-- 搜索词标题：从弹层进来时直接显示在结果上方 -->
+        <StackPanel Grid.Row="2" x:Name="QueryHeader" Spacing="12" Margin="0,20,0,16"
+                    Visibility="Collapsed">
+            <TextBlock x:Name="QueryTitle" FontSize="28" FontWeight="Bold"
+                       TextWrapping="Wrap" />
+            <Border Height="1" Background="{ThemeResource BreadcrumbStroke}" />
+        </StackPanel>
+
+        <!-- 结果按媒体服务器分组：一段 = 一台服务器的命中 -->
+        <ScrollViewer Grid.Row="3" Padding="0,0,8,24" VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{x:Bind ViewModel.Groups, Mode=OneWay}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:SearchGroup">
+                        <StackPanel Spacing="10" Margin="0,0,0,24">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <FontIcon Glyph="&#xE774;" FontSize="13" Opacity="0.5"
+                                          VerticalAlignment="Center" />
+                                <TextBlock Text="{x:Bind ServerName}" FontSize="17"
+                                           FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <TextBlock Text="{x:Bind CountText}" FontSize="12" Opacity="0.5"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <TextBlock Text="{x:Bind Error}" Visibility="{x:Bind ErrorVisibility}"
+                                       FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+
+                            <GridView ItemsSource="{x:Bind Items}"
+                                      Visibility="{x:Bind GridVisibility}"
+                                      SelectionMode="None" IsItemClickEnabled="True"
+                                      ItemClick="GroupGrid_ItemClick"
+                                      ScrollViewer.VerticalScrollMode="Disabled"
+                                      ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                      anim:FluidItems.EntranceEnabled="True">
+                                <GridView.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ItemCard">
+                                        <local:PosterCard Card="{x:Bind}" />
+                                    </DataTemplate>
+                                </GridView.ItemTemplate>
+                            </GridView>
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <ProgressRing Grid.Row="3" Width="36" Height="36"
+                      IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+        <TextBlock Grid.Row="3" Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   TextWrapping="Wrap" MaxWidth="500" />
     </Grid>
 </Page>

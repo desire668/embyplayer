@@ -2,17 +2,21 @@
 
 WinUI3 桌面客户端，用于浏览与播放 Emby 媒体服务器的内容，内置 mpv 播放器（中文右键菜单）。
 
-![图片描述](./window.png)
-![图片描述](./Full%20screen.png)
+
+![图片描述](./window.png)  
+![图片描述](./Detail.png)
 
 ## 功能特性
 
-- 多服务器管理（添加 / 切换 / 公共信息探测）
-- 海报墙首页：TMDB「本周热门电影」大图轮播（中文标题 / 评分 / 类型 / 片长），播放前在媒体库中按片名匹配
-- 媒体库浏览、详情页（分辨率 / 码率 / 字幕轨道）
-- 聚合搜索：跨所有已登录 Emby 服务器同时检索
-- 内置 mpv 播放器（已汉化右键菜单、字体、配置）
-- 头像 / 服务器名 / 标题栏图标显示
+- 服务器 / 内容源管理页：侧栏「服务器」入口统一管理 Emby 服务器与在线服务（TMDB），可改别名、切换、删除
+- 海报墙首页：TMDB「本周热门电影」大图轮播（中文标题 / 评分 / 类型 / 片长）与「受欢迎的影片」海报行，播放前在媒体库中按片名匹配
+- 媒体库浏览、详情页（分辨率 / 码率 / 大小、TMDB / IMDb / Trakt 多平台评分、分类点击跳转、剧集缩略图大卡）
+- 聚合搜索：跨所有已登录 Emby 服务器同时检索，结果按服务器分组，剧集自动折叠
+- 搜索历史：搜索框下方下拉历史卡片，支持点词条搜索、单条删除与一键清空
+- 内置 mpv 播放器（已汉化右键菜单 / OSC / 字体 / 配置），13 项常用快捷键可在设置页自行录制
+- 外部服务联通性校验：TMDB 支持 v3 API Key 与 v4 Token，OMDb 支持粘贴完整 URL，实时显示连接状态
+- 缓存管理：元数据 / 图片 / 弹幕 / 播放四类缓存分别显示占用、单独清理，可设上限与有效期
+- 云母侧栏 + 自绘标题栏（最小化 / 最大化 / 关闭）+ 面包屑导航
 - 内置自动更新：检测到新版本后可一键下载安装包并静默覆盖安装
 - 崩溃日志记录到 `%TEMP%\EmbyPlayer.crash.log`
 
@@ -75,10 +79,10 @@ EmbyPlayer.sln
 ├─ src\EmbyPlayer\
 │  ├─ EmbyPlayer.csproj        WinUI3 unpackaged 项目
 │  ├─ App.xaml(.cs)            应用入口 + 异常捕获
-│  ├─ MainWindow.xaml(.cs)     主窗口 + 服务器下拉
-│  ├─ Views\                   LibraryPage / SearchPage / DetailPage 等
+│  ├─ MainWindow.xaml(.cs)     主窗口 + 云母侧栏 + 自绘标题栏
+│  ├─ Views\                   HomePage / LibraryPage / SearchPage / DetailPage / ServersPage 等
 │  ├─ ViewModels\              与 Views 一一对应
-│  ├─ Services\                EmbyApiClient / MpvLocator / ItemCardMapper 等
+│  ├─ Services\                EmbyApiClient / TmdbClient / CacheService / MpvShortcuts 等
 │  ├─ Models\                  API 数据模型
 │  ├─ mpv\portable_config\     mpv 中文菜单 / 配置（拷到输出目录）
 │  └─ Assets\                  应用图标
