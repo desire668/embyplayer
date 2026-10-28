@@ -2,7 +2,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EmbyPlayer.Animations;
-using EmbyPlayer.LiquidGlass;
 using EmbyPlayer.Models;
 using EmbyPlayer.Services;
 using EmbyPlayer.Views;
@@ -167,8 +166,6 @@ public partial class HomeViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(CurrentHero));
         RebuildDots();
-        // 大图换了：悬浮侧栏的玻璃按钮要重新采样背后的画面
-        GlassRefresh.Request();
     }
 
     partial void OnIsLoggedInChanged(bool value)

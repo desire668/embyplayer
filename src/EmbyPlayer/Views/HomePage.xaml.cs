@@ -39,13 +39,6 @@ public sealed partial class HomePage : Page, IRefreshablePage
         RestartCarousel();
     }
 
-    /// <summary>
-    /// 大图真正解码完成后才让侧栏玻璃按钮重新采样背后的画面。
-    /// 切屏时新图可能还在下载，过早采样会抓到黑底，圆点就会发黑。
-    /// </summary>
-    private void HeroBackdrop_ImageOpened(object sender, RoutedEventArgs e) =>
-        EmbyPlayer.LiquidGlass.GlassRefresh.Request();
-
     private async void OnPageLoaded(object sender, RoutedEventArgs e)
     {
         if (!_initialized)

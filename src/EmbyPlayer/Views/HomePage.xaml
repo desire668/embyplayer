@@ -76,12 +76,9 @@
                         </Rectangle.Fill>
                     </Rectangle>
 
-                    <!-- 大图解码完成的那一刻才通知玻璃按钮重采样：
-                         切屏时立刻采样会抓到还没解码的黑底，侧栏圆点就会发黑 -->
                     <Image x:Name="HeroBackdrop"
                            Source="{x:Bind ViewModel.CurrentHero.Backdrop, Mode=OneWay}"
-                           Stretch="UniformToFill"
-                           ImageOpened="HeroBackdrop_ImageOpened" />
+                           Stretch="UniformToFill" />
 
                     <!-- 底部渐隐：与详情页背景图同一条曲线（下半部分一路淡到页面底色），
                          大图与下方内容之间不再是一条硬切线；终点色 = 页面底色，衔接无缝 -->
