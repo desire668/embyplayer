@@ -23,12 +23,11 @@ public sealed class MediaSectionItemEventArgs : EventArgs
 /// <summary>
 /// 媒体库概览页的一个横向分类区。
 ///
-/// 交互一览（Netflix / Disney+ 桌面端风格）：
-/// - 鼠标按住卡片或空白处左右拖动滚动；拖动不会误触发卡片点击；
-/// - 垂直滚轮在本区域转成水平滚动；触控板水平两指滑动直接水平滚动；
-///   两种输入都只在「还有内容可滚」时拦截，滚到头后事件冒泡给页面的纵向滚动；
-/// - 鼠标进入区域时左右圆形按钮淡入，离开淡出（不影响滚动位置）；
-/// - 点按钮平滑滚动约一个视口的 70%，滚动过程中按钮随边界实时启停。
+/// 卡片列表与首页海报行同款（ListView + IsItemClickEnabled + ItemClick），
+/// 卡片动画直接复用 PosterCard（悬停放大 / 按下缩放 / 视差 / 阴影），
+/// 点击由 ListView 原生处理，不再有自绘拖动抢指针、吞点击的问题。
+/// 另外保留：垂直滚轮转横向、触控板水平滑动、悬停显隐的左右圆形箭头
+/// （点击箭头平滑滚动约一个视口的 70%，到边界自动隐藏并禁用）。
 /// </summary>
 public sealed partial class HorizontalMediaSection : UserControl, System.ComponentModel.INotifyPropertyChanged
 {
@@ -46,8 +45,8 @@ public sealed partial class HorizontalMediaSection : UserControl, System.Compone
         Root.PointerEntered += (_, _) => SetArrowsVisible(true);
         Root.PointerExited += (_, _) => SetArrowsVisible(false);
 
-        // 数据异步填充 / 尺寸变化都要重算箭头边界状态
-        Loaded += (_, _) => UpdateArrows();
+        // 模板应用后才能拿到 ListView 内部的 ScrollViewer
+        Loaded += (_, _) => EnsureScroller();
         Unloaded += StopSmoothScroll;
     }
 
@@ -155,125 +154,61 @@ public sealed partial class HorizontalMediaSection : UserControl, System.Compone
     private void ViewAll_Click(object sender, RoutedEventArgs e) =>
         ViewAllRequested?.Invoke(this, EventArgs.Empty);
 
-    private void Card_Tapped(object sender, TappedRoutedEventArgs e)
+    private void List_ItemClick(object sender, ItemClickEventArgs e)
     {
-        // 拖动结束后的那次抬起不算点击
-        if (_suppressNextTap)
-        {
-            _suppressNextTap = false;
-            return;
-        }
-
-        if (Section is null && sender is FrameworkElement { DataContext: ItemCard card })
-        {
-            // 兜底：没绑 Section 时直接从卡片拿数据
-            ItemInvoked?.Invoke(this, new MediaSectionItemEventArgs(card, null));
-            return;
-        }
-
-        if (sender is FrameworkElement { DataContext: ItemCard item })
-        {
-            var poster = Animations.FluidNavigation.FindDescendant<PosterCard>(sender as DependencyObject);
-            ItemInvoked?.Invoke(this, new MediaSectionItemEventArgs(item, poster));
-        }
-    }
-
-    // ==================== 拖动滚动 ====================
-
-    /// <summary>超过这个位移才判定为拖动（否则当作点卡片的预备动作）。</summary>
-    private const double DragThreshold = 6.0;
-
-    private bool _isDragging;
-    private bool _suppressNextTap;
-    private bool _pointerCaptured;
-    private uint? _dragPointerId;
-    private double _dragStartX;
-    private double _dragStartOffset;
-
-    private void Scroller_PointerPressed(object sender, PointerRoutedEventArgs e)
-    {
-        // 触摸留给系统惯性滚动；鼠标 / 触控笔走自绘拖动
-        var point = e.GetCurrentPoint(Scroller);
-        if (point.PointerDeviceType != Microsoft.UI.Input.PointerDeviceType.Mouse &&
-            point.PointerDeviceType != Microsoft.UI.Input.PointerDeviceType.Pen)
+        if (e.ClickedItem is not ItemCard card)
         {
             return;
         }
 
-        _isDragging = false;
-        _pointerCaptured = false;
-        _dragPointerId = point.PointerId;
-        _dragStartX = point.Position.X;
-        _dragStartOffset = Scroller.HorizontalOffset;
+        // 与首页海报行一致：点击的海报作为共享元素飞入详情页
+        PosterCard? poster = null;
+        if (sender is ListView list)
+        {
+            poster = Animations.FluidNavigation.FindDescendant<PosterCard>(list.ContainerFromItem(card));
+        }
 
-        // 注意：这里刻意不抓指针。按下即抓会把卡片自己的 Tapped 吃掉，
-        // 导致单击打不开详情；只有真的拖动起来（越过阈值）才抓。
-        // 另外每次按下都把「吞掉下一次点击」的标记清掉，避免标记残留误伤后续点击。
-        _suppressNextTap = false;
+        ItemInvoked?.Invoke(this, new MediaSectionItemEventArgs(card, poster));
     }
 
-    private void Scroller_PointerMoved(object sender, PointerRoutedEventArgs e)
+    // ==================== 内部 ScrollViewer ====================
+
+    private ScrollViewer? _scroller;
+
+    /// <summary>
+    /// ListView 内部的横向 ScrollViewer：箭头平滑滚动 / 边界判断都要在它身上做。
+    /// 模板未应用前拿不到，所以按需查找并挂 ViewChanged。
+    /// </summary>
+    private void EnsureScroller()
     {
-        if (_dragPointerId != e.GetCurrentPoint(Scroller).PointerId)
+        if (_scroller is not null)
         {
             return;
         }
 
-        var x = e.GetCurrentPoint(Scroller).Position.X;
-        var dx = x - _dragStartX;
-
-        if (!_isDragging)
+        _scroller = Animations.FluidNavigation.FindDescendant<ScrollViewer>(List);
+        if (_scroller is null)
         {
-            // 未越过阈值：当它是点卡片的预备动作，不动滚动
-            if (Math.Abs(dx) < DragThreshold)
-            {
-                return;
-            }
-
-            _isDragging = true;
-            StopSmoothScroll(null, null!); // 用户上手了，动画让位
-
-            // 确认是拖动后再抓指针：之后移出列表也能继续收到 Moved / Released
-            Scroller.CapturePointer(e.Pointer);
-            _pointerCaptured = true;
+            return;
         }
 
-        // 拖多少滚多少：禁用动画，跟手
-        var target = Math.Clamp(_dragStartOffset - dx, 0, Scroller.ScrollableWidth);
-        Scroller.ChangeView(target, null, null, true);
-    }
-
-    private void Scroller_PointerReleased(object sender, PointerRoutedEventArgs e)
-    {
-        if (_pointerCaptured)
-        {
-            Scroller.ReleasePointerCapture(e.Pointer);
-            _pointerCaptured = false;
-        }
-
-        if (_isDragging)
-        {
-            // 拖过就吞掉紧随其后的点击，避免拖完直接蹦进详情页
-            _suppressNextTap = true;
-            _isDragging = false;
-        }
-
-        _dragPointerId = null;
-    }
-
-    private void Scroller_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
-    {
-        _pointerCaptured = false;
-        _isDragging = false;
-        _dragPointerId = null;
+        _scroller.ViewChanged += (_, _) => UpdateArrows();
+        _scroller.SizeChanged += (_, _) => UpdateArrows();
+        UpdateArrows();
     }
 
     // ==================== 滚轮 / 触控板 ====================
 
-    private void Scroller_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    private void List_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
     {
-        var props = e.GetCurrentPoint(Scroller).Properties;
-        var max = Scroller.ScrollableWidth;
+        var scroller = _scroller ??= Animations.FluidNavigation.FindDescendant<ScrollViewer>(List);
+        if (scroller is null)
+        {
+            return;
+        }
+
+        var props = e.GetCurrentPoint(List).Properties;
+        var max = scroller.ScrollableWidth;
         if (max <= 0.5)
         {
             return; // 没有横向可滚空间：不拦截，让页面正常纵向滚动
@@ -283,18 +218,18 @@ public sealed partial class HorizontalMediaSection : UserControl, System.Compone
         if (props.IsHorizontalMouseWheel)
         {
             // 触控板水平两指滑动：正值向右
-            target = Scroller.HorizontalOffset + props.MouseWheelDelta;
+            target = scroller.HorizontalOffset + props.MouseWheelDelta;
         }
         else
         {
             // 垂直滚轮转横向：向上（正）往左、向下（负）往右，一次约一张海报
-            target = Scroller.HorizontalOffset - props.MouseWheelDelta * 1.5;
+            target = scroller.HorizontalOffset - props.MouseWheelDelta * 1.5;
         }
 
         target = Math.Clamp(target, 0, max);
 
         // 已经在边缘上没有可滚余量：同样放行给页面纵向滚动
-        if (Math.Abs(target - Scroller.HorizontalOffset) < 0.5)
+        if (Math.Abs(target - scroller.HorizontalOffset) < 0.5)
         {
             return;
         }
@@ -306,13 +241,15 @@ public sealed partial class HorizontalMediaSection : UserControl, System.Compone
     // ==================== 箭头滚动 ====================
 
     private void PrevButton_Click(object sender, RoutedEventArgs e) =>
-        SmoothScrollTo(Scroller.HorizontalOffset - ScrollStep());
+        SmoothScrollTo(Offset() - ScrollStep());
 
     private void NextButton_Click(object sender, RoutedEventArgs e) =>
-        SmoothScrollTo(Scroller.HorizontalOffset + ScrollStep());
+        SmoothScrollTo(Offset() + ScrollStep());
 
     /// <summary>单次点击箭头移动的距离：约一个视口的 70%。</summary>
-    private double ScrollStep() => Scroller.ViewportWidth * 0.7;
+    private double ScrollStep() => (_scroller?.ViewportWidth ?? 0) * 0.7;
+
+    private double Offset() => _scroller?.HorizontalOffset ?? 0;
 
     // ==================== 平滑滚动 ====================
 
@@ -324,13 +261,19 @@ public sealed partial class HorizontalMediaSection : UserControl, System.Compone
 
     /// <summary>
     /// 带缓动的平滑滚动。WinUI3 的 ChangeView 不提供动画，这里用 16ms 节拍的计时器
-    /// 逐帧推进偏移（ease-out cubic），每帧都走真实偏移，ItemsRepeater 的虚拟化
-    /// 回收和箭头边界状态都能实时跟上。retarget 时从当前实际位置续走。
+    /// 逐帧推进偏移（ease-out cubic），每帧都走真实偏移，虚拟化和箭头边界状态都能实时跟上。
+    /// retarget 时从当前实际位置续走。
     /// </summary>
     private void SmoothScrollTo(double target, bool shortStep = false)
     {
-        target = Math.Clamp(target, 0, Scroller.ScrollableWidth);
-        _smoothFrom = Scroller.HorizontalOffset;
+        var scroller = _scroller ??= Animations.FluidNavigation.FindDescendant<ScrollViewer>(List);
+        if (scroller is null)
+        {
+            return;
+        }
+
+        target = Math.Clamp(target, 0, scroller.ScrollableWidth);
+        _smoothFrom = scroller.HorizontalOffset;
         _smoothTo = target;
         _smoothDurationMs = shortStep ? 180 : 360;
         _smoothClock.Restart();
@@ -345,17 +288,24 @@ public sealed partial class HorizontalMediaSection : UserControl, System.Compone
 
     private void OnSmoothScrollTick(object? sender, object e)
     {
+        var scroller = _scroller;
+        if (scroller is null)
+        {
+            StopSmoothScroll(null, null!);
+            return;
+        }
+
         var progress = _smoothClock.ElapsedMilliseconds / (double)_smoothDurationMs;
         if (progress >= 1)
         {
             StopSmoothScroll(null, null!);
-            Scroller.ChangeView(_smoothTo, null, null, true);
+            scroller.ChangeView(_smoothTo, null, null, true);
             UpdateArrows();
             return;
         }
 
         var eased = 1 - Math.Pow(1 - progress, 3);
-        Scroller.ChangeView(_smoothFrom + (_smoothTo - _smoothFrom) * eased, null, null, true);
+        scroller.ChangeView(_smoothFrom + (_smoothTo - _smoothFrom) * eased, null, null, true);
     }
 
     private void StopSmoothScroll(object? sender, RoutedEventArgs e) => _smoothTimer?.Stop();
@@ -377,8 +327,14 @@ public sealed partial class HorizontalMediaSection : UserControl, System.Compone
     /// </summary>
     private void UpdateArrows()
     {
-        var canPrev = Scroller.HorizontalOffset > 1;
-        var canNext = Scroller.HorizontalOffset < Scroller.ScrollableWidth - 1;
+        var scroller = _scroller ??= Animations.FluidNavigation.FindDescendant<ScrollViewer>(List);
+        if (scroller is null)
+        {
+            return;
+        }
+
+        var canPrev = scroller.HorizontalOffset > 1;
+        var canNext = scroller.HorizontalOffset < scroller.ScrollableWidth - 1;
 
         ShowArrow(PrevButton, _arrowsHovered && canPrev);
         ShowArrow(NextButton, _arrowsHovered && canNext);
@@ -412,10 +368,4 @@ public sealed partial class HorizontalMediaSection : UserControl, System.Compone
         storyboard.Children.Add(animation);
         storyboard.Begin();
     }
-
-    private void Scroller_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e) =>
-        // 平滑滚动 / 拖动 / 惯性期间每帧都会触发，箭头状态随之实时更新
-        UpdateArrows();
-
-    private void Scroller_SizeChanged(object sender, SizeChangedEventArgs e) => UpdateArrows();
 }

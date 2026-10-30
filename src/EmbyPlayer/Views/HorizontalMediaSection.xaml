@@ -40,36 +40,32 @@
                    FontSize="13" Opacity="0.65" Margin="0,0,20,8" />
 
         <!-- ==================== 横向卡片列表 ====================
-             ScrollViewer 只开水平方向：纵向输入留给页面外层滚动。
-             ItemsRepeater + StackLayout 自带虚拟化，滚动出的卡片按需生成。 -->
+             与首页海报行完全同款：ListView + IsItemClickEnabled + ItemClick，
+             卡片动画复用 PosterCard（悬停放大 / 按下缩放 / 视差 / 阴影）。
+             之前用 ItemsRepeater + 自绘拖动，点击瞬间鼠标稍有位移就会被判定成
+             拖动而吞掉 Tapped，表现为卡片点不进详情页 —— 这里不再自绘拖动，
+             横向平移交给 ListView 原生（触摸/触控板都支持）。 -->
         <Grid Grid.Row="2">
-            <ScrollViewer x:Name="Scroller"
-                          HorizontalAlignment="Stretch"
-                          HorizontalScrollMode="Enabled"
-                          HorizontalScrollBarVisibility="Hidden"
-                          VerticalScrollMode="Disabled"
-                          VerticalScrollBarVisibility="Hidden"
-                          PointerPressed="Scroller_PointerPressed"
-                          PointerMoved="Scroller_PointerMoved"
-                          PointerReleased="Scroller_PointerReleased"
-                          PointerCaptureLost="Scroller_PointerCaptureLost"
-                          PointerCanceled="Scroller_PointerReleased"
-                          PointerWheelChanged="Scroller_PointerWheelChanged"
-                          ViewChanged="Scroller_ViewChanged"
-                          SizeChanged="Scroller_SizeChanged">
-                <ItemsRepeater x:Name="Repeater" ItemsSource="{x:Bind Items, Mode=OneWay}">
-                    <ItemsRepeater.Layout>
-                        <StackLayout Orientation="Horizontal" Spacing="16" />
-                    </ItemsRepeater.Layout>
-                    <ItemsRepeater.ItemTemplate>
-                        <DataTemplate x:DataType="vm:ItemCard">
-                            <Grid Tapped="Card_Tapped">
-                                <local:PosterCard Card="{x:Bind}" />
-                            </Grid>
-                        </DataTemplate>
-                    </ItemsRepeater.ItemTemplate>
-                </ItemsRepeater>
-            </ScrollViewer>
+            <ListView x:Name="List"
+                      Background="Transparent"
+                      ItemsSource="{x:Bind Items, Mode=OneWay}"
+                      SelectionMode="None" IsItemClickEnabled="True"
+                      ItemClick="List_ItemClick"
+                      PointerWheelChanged="List_PointerWheelChanged"
+                      ScrollViewer.HorizontalScrollMode="Enabled"
+                      ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                      ScrollViewer.VerticalScrollMode="Disabled">
+                <ListView.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="16" />
+                    </ItemsPanelTemplate>
+                </ListView.ItemsPanel>
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ItemCard">
+                        <local:PosterCard Card="{x:Bind}" />
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
 
             <!-- ==================== 左右导航按钮 ====================
                  半透明圆形，覆盖在列表两侧不占布局；默认隐藏，鼠标进入分类区才淡入。 -->
