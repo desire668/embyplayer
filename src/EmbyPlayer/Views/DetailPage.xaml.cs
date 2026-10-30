@@ -169,6 +169,15 @@ public sealed partial class DetailPage : Page
         FluidNavigation.StartPoster(DetailPoster);
     }
 
+    /// <summary>
+    /// 剧名 logo 是网络图片，即使 URL 拿到了也可能下不下来；
+    /// 失败就把 logo 置空，界面自动退回文字片名，不留一块空白。
+    /// </summary>
+    private void TitleLogo_ImageFailed(object sender, ExceptionRoutedEventArgs e)
+    {
+        ViewModel.TitleLogo = null;
+    }
+
     private async Task ShowSubtitleChoiceAsync()
     {
         SubtitleDialog.XamlRoot = XamlRoot;

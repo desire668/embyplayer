@@ -40,14 +40,14 @@ public static class ImageCacheService
 
     private sealed class Entry
     {
-        public Entry(string key, BitmapImage image)
+        public Entry(string key, ImageSource image)
         {
             Key = key;
             Image = image;
         }
 
         public string Key { get; }
-        public BitmapImage Image { get; }
+        public ImageSource Image { get; }
     }
 
     /// <summary>
@@ -75,18 +75,7 @@ public static class ImageCacheService
         // 磁盘缓存命中：直接读本地文件，零网络；没命中就照旧从远程加载，并在后台存一份
         var disk = DiskHit(url);
 
-        BitmapImage image;
-        try
-        {
-            image = new BitmapImage
-            {
-                UriSource = new Uri(disk ?? url),
-                // 大图用途（如详情页背景）按接近原始尺寸解码，避免放大后糊成一片
-                DecodePixelWidth = decodeWidth ?? DecodeWidth,
-                DecodePixelType = DecodePixelType.Logical,
-            };
-        }
-        catch
+        if (CreateSource(disk ?? url, decodeWidth ?? DecodeWidth) is not { } image)
         {
             // 非 UI 线程或 URL 非法：退回 null，卡片显示首字母占位，不让整页崩掉
             return null;
@@ -126,6 +115,35 @@ public static class ImageCacheService
             }
 
             return image;
+        }
+    }
+
+    /// <summary>
+    /// 按 URL 建 ImageSource：png / jpg 用 BitmapImage（可按显示尺寸解码省内存），
+    /// svg 用 SvgImageSource —— TMDB 的剧名 logo 有不少是 svg，BitmapImage 解不了。
+    /// 依赖对象必须在 UI 线程创建，构造失败（URL 非法 / 非 UI 线程）返回 null。
+    /// </summary>
+    private static ImageSource? CreateSource(string url, int decodeWidth)
+    {
+        try
+        {
+            if (url.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
+            {
+                // 矢量图按要给的尺寸光栅化，宽度给了就按比例算高度
+                return new SvgImageSource(new Uri(url)) { RasterizePixelWidth = decodeWidth };
+            }
+
+            return new BitmapImage
+            {
+                UriSource = new Uri(url),
+                // 大图用途（如详情页背景）按接近原始尺寸解码，避免放大后糊成一片
+                DecodePixelWidth = decodeWidth,
+                DecodePixelType = DecodePixelType.Logical,
+            };
+        }
+        catch
+        {
+            return null;
         }
     }
 
@@ -188,22 +206,49 @@ public static class ImageCacheService
     /// 主地址加载失败时切到备用地址（TMDB 图片在国内直连常被拦，改用镜像兜底）。
     /// 只切一次——已指向备用地址时不再处理，避免失败后无限重试。
     /// </summary>
-    private static void AttachFallback(BitmapImage image, string fallbackUrl)
+    private static void AttachFallback(ImageSource image, string fallbackUrl)
     {
-        image.ImageFailed += (_, _) =>
+        switch (image)
         {
-            try
+            case BitmapImage bitmap:
+                bitmap.ImageFailed += (_, _) => SwitchToFallback(bitmap, fallbackUrl);
+                break;
+            case SvgImageSource svg:
+                svg.OpenFailed += (_, _) => SwitchToFallback(svg, fallbackUrl);
+                break;
+        }
+    }
+
+    /// <summary>真正换成备用地址：已指向备用地址时不再处理，避免失败后无限重试。</summary>
+    private static void SwitchToFallback(ImageSource image, string fallbackUrl)
+    {
+        try
+        {
+            var current = image switch
             {
-                if (!string.Equals(image.UriSource?.OriginalString, fallbackUrl, StringComparison.OrdinalIgnoreCase))
-                {
-                    image.UriSource = new Uri(fallbackUrl);
-                }
-            }
-            catch
+                BitmapImage bitmap => bitmap.UriSource?.OriginalString,
+                SvgImageSource svg => svg.UriSource?.OriginalString,
+                _ => null
+            };
+            if (string.Equals(current, fallbackUrl, StringComparison.OrdinalIgnoreCase))
             {
-                // 兜底也失败：保留首字母占位，不影响其它卡片
+                return;
             }
-        };
+
+            switch (image)
+            {
+                case BitmapImage bitmap:
+                    bitmap.UriSource = new Uri(fallbackUrl);
+                    break;
+                case SvgImageSource svg:
+                    svg.UriSource = new Uri(fallbackUrl);
+                    break;
+            }
+        }
+        catch
+        {
+            // 兜底也失败：保留占位，不影响其它图片
+        }
     }
 
     /// <summary>清空缓存（切换服务器 / 重新登录 / 缓存页点清理时调用，避免串图）。</summary>

@@ -79,9 +79,44 @@ public class TmdbFindResponse
 /// <summary>TMDB 评分查询结果（id 同时可作为后续请求的依据）。</summary>
 public sealed record TmdbRating(int Id, double Vote, int Votes);
 
-/// <summary>/{kind}/{id}/external_ids：拿条目在别处的 id（目前只用 IMDb id）。</summary>
+/// <summary>/{kind}/{id}/images：拿条目在别处的 id（目前只用 IMDb id）。</summary>
 public sealed class TmdbExternalIds
 {
     [JsonPropertyName("imdb_id")]
     public string? ImdbId { get; set; }
+}
+
+/// <summary>images 接口返回的一张图（海报 / 背景 / 剧名 logo 结构相同）。</summary>
+public sealed class TmdbImage
+{
+    /// <summary>形如 "/xxxx.png" 或 "/xxxx.svg"；svg 不能直接解码成位图，需单独处理。</summary>
+    [JsonPropertyName("file_path")]
+    public string? FilePath { get; set; }
+
+    [JsonPropertyName("width")]
+    public int? Width { get; set; }
+
+    [JsonPropertyName("height")]
+    public int? Height { get; set; }
+
+    [JsonPropertyName("aspect_ratio")]
+    public double? AspectRatio { get; set; }
+
+    /// <summary>语言标记："zh" / "en" / null（无字，纯图形）。</summary>
+    [JsonPropertyName("iso_639_1")]
+    public string? Language { get; set; }
+
+    /// <summary>这张图的社区评分，挑 logo 时按它排优选。</summary>
+    [JsonPropertyName("vote_average")]
+    public double? VoteAverage { get; set; }
+
+    [JsonPropertyName("vote_count")]
+    public int? VoteCount { get; set; }
+}
+
+/// <summary>/{kind}/{id}/images 的响应；目前只用到 logos（剧名 logo）。</summary>
+public sealed class TmdbImages
+{
+    [JsonPropertyName("logos")]
+    public List<TmdbImage> Logos { get; set; } = new();
 }

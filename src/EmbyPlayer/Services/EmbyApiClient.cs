@@ -264,6 +264,18 @@ public sealed class EmbyApiClient : IDisposable
         return $"{ServerUrl}/Items/{itemId}/Images/Backdrop/0?maxWidth={maxWidth}{tag}&api_key={Token}";
     }
 
+    /// <summary>
+    /// 服务器自己刮到的剧名 Logo 图。有的话优先用它 —— 就在本地服务器上，
+    /// 不用再为一张标题图去问外部接口；Emby 存的是矢量图时能转成 png。
+    /// </summary>
+    public const int LogoWidth = 500;
+
+    public string GetLogoImageUrl(string itemId, string? imageTag, int maxWidth = LogoWidth)
+    {
+        var tag = string.IsNullOrEmpty(imageTag) ? "" : $"&tag={Uri.EscapeDataString(imageTag)}";
+        return $"{ServerUrl}/Items/{itemId}/Images/Logo?format=png&maxWidth={maxWidth}{tag}&api_key={Token}";
+    }
+
     public string BuildStreamUrl(string itemId, string mediaSourceId, string? playSessionId)
     {
         var psid = string.IsNullOrEmpty(playSessionId) ? "" : $"&PlaySessionId={playSessionId}";
@@ -334,7 +346,18 @@ public sealed class EmbyApiClient : IDisposable
 
     private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
-        var response = await _http.SendAsync(request, ct);
+        HttpResponseMessage response;
+        try
+        {
+            response = await _http.SendAsync(request, ct);
+        }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // HttpClient 默认会抛 TaskCanceledException，各页面只会显示一句
+            // "The request was canceled..."，看不出是服务器挂了；在这层翻译成人话。
+            throw new EmbyApiException(408, "服务器 30 秒内没有响应，可能已离线或网络不通。");
+        }
+
         if ((int)response.StatusCode == 401)
         {
             Unauthorized?.Invoke();

@@ -1,4 +1,5 @@
 ﻿using EmbyPlayer.Animations;
+using EmbyPlayer.Services;
 using EmbyPlayer.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
@@ -74,6 +75,30 @@ public sealed partial class LibraryPage : Page, IRefreshablePage
         }
 
         ViewModel.OpenItem(card);
+    }
+
+    /// <summary>概览横向分类区里点了卡片：与网格视图一样做共享元素动画后进详情。</summary>
+    private void Section_ItemInvoked(object sender, MediaSectionItemEventArgs e)
+    {
+        FluidNavigation.PreparePoster(e.Poster?.PosterElement);
+        ViewModel.OpenItem(e.Card);
+    }
+
+    /// <summary>概览分类区的「查看全部」：媒体分类切到对应网格，「继续观看」去续播页。</summary>
+    private void Section_ViewAllRequested(object sender, EventArgs e)
+    {
+        if (sender is HorizontalMediaSection { Section: { } section })
+        {
+            switch (section.ViewAll)
+            {
+                case MediaSectionViewAll.View when section.TargetView is { } view:
+                    ViewModel.SelectedView = view;
+                    break;
+                case MediaSectionViewAll.Resume:
+                    App.Services.GetRequiredService<NavigationService>().NavigateTo<ResumePage>();
+                    break;
+            }
+        }
     }
 
     private void ShowAllViews_Click(object sender, RoutedEventArgs e)

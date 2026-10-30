@@ -186,6 +186,93 @@ public partial class DetailViewModel : ObservableObject
     partial void OnBackdropSourceChanged(ImageSource? value) =>
         OnPropertyChanged(nameof(BackdropVisibility));
 
+    /// <summary>
+    /// TMDB 的剧名 logo：拿到了就用它当详情页标题；拿不到（没有 TMDB id / 没有 API Key /
+    /// 这部片没有 logo / 图加载失败）时保持 null，界面回落显示影片名文字。
+    /// </summary>
+    [ObservableProperty]
+    private ImageSource? _titleLogo;
+
+    public Microsoft.UI.Xaml.Visibility TitleLogoVisibility =>
+        TitleLogo is not null
+            ? Microsoft.UI.Xaml.Visibility.Visible
+            : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    /// <summary>有 logo 时隐掉文字标题，避免两种标题叠在一起。</summary>
+    public Microsoft.UI.Xaml.Visibility TitleTextVisibility =>
+        TitleLogo is null
+            ? Microsoft.UI.Xaml.Visibility.Visible
+            : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    partial void OnTitleLogoChanged(ImageSource? value)
+    {
+        OnPropertyChanged(nameof(TitleLogoVisibility));
+        OnPropertyChanged(nameof(TitleTextVisibility));
+    }
+
+    /// <summary>异步取剧名 logo：拿到就替换文字标题，拿不到就当什么都没发生。</summary>
+    private async Task LoadTitleLogoAsync(BaseItemDto item)
+    {
+        // 服务器自己刮到 Logo 图时直接用：图就在本地服务器上，不必再问外部接口
+        if (item.ImageTags?.TryGetValue("Logo", out var logoTag) == true &&
+            !string.IsNullOrWhiteSpace(logoTag))
+        {
+            var localUrl = _api.GetLogoImageUrl(item.Id, logoTag);
+            PostToUi(() => TitleLogo = ImageCacheService.Get(localUrl, decodeWidth: EmbyApiClient.LogoWidth));
+            return;
+        }
+
+        if (!_tmdb.HasApiKey)
+        {
+            return;
+        }
+
+        try
+        {
+            // 剧集 / 季 / 集在 TMDB 都归 tv
+            var isTv = item.Type is "Series" or "Season" or "Episode";
+            string? tmdbId = item.ProviderIds is not null &&
+                             item.ProviderIds.TryGetValue("Tmdb", out var id) &&
+                             !string.IsNullOrWhiteSpace(id)
+                ? id
+                : null;
+
+            if (tmdbId is null)
+            {
+                // 没刮到 TMDB id：按片名（+年份）搜一次再用它的 id
+                var name = item.Type == "Episode" && !string.IsNullOrWhiteSpace(item.SeriesName)
+                    ? item.SeriesName!
+                    : item.Name;
+                var found = await _tmdb.SearchAsync(name, item.ProductionYear, isTv);
+                if (found is null)
+                {
+                    return;
+                }
+                tmdbId = found.Id.ToString();
+            }
+
+            var path = await _tmdb.GetLogoPathAsync(isTv ? "tv" : "movie", tmdbId);
+            if (string.IsNullOrEmpty(path))
+            {
+                return;
+            }
+
+            // 网络是慢的：期间可能已经翻到别的片子
+            if (!ReferenceEquals(Item, item))
+            {
+                return;
+            }
+
+            var url = _tmdb.GetImageUrl(path, TmdbClient.LogoWidth);
+            var fallback = _tmdb.GetFallbackImageUrl(path, TmdbClient.LogoWidth);
+            PostToUi(() => TitleLogo = ImageCacheService.Get(url, fallback, TmdbClient.LogoWidth));
+        }
+        catch
+        {
+            // logo 只是锦上添花：拿不到就显示文字片名
+        }
+    }
+
     // 弹幕 UI 绑定
     [ObservableProperty]
     private bool _danmakuEnabled;
@@ -312,10 +399,13 @@ public partial class DetailViewModel : ObservableObject
         IsLoading = true;
         ErrorMessage = null;
         BackdropSource = null;
+        TitleLogo = null;
         MediaChips.Clear();
         HasMediaInfo = false;
         IsTmdbItem = false;
         TmdbNotice = "";
+        // 每次进入详情都重置续播目标：上一部片的续播记录不能带到这一部
+        _resumeEpisode = null;
 
         // 先用列表里已经解析过的海报 URL 顶上：命中缓存的话这一帧就能显示，
         // 不用等 GetItemAsync 回来，也不会出现「先空框、后蹦出图」。
@@ -324,6 +414,16 @@ public partial class DetailViewModel : ObservableObject
         try
         {
             var item = await _api.GetItemAsync(itemId);
+
+            // 「继续播放」进来的是单集（首页继续播放卡片存的是集 Id）：
+            // 单集页没有季 / 集列表上下文，先记下要续播哪一集，再落到剧集详情页。
+            // 集详情刚拉过一遍已进元数据缓存，PlayAsync 里再取那一集时不会再走网络。
+            if (item.Type == "Episode" && !string.IsNullOrEmpty(item.SeriesId))
+            {
+                _resumeEpisode = new ResumeEpisode(item.Id, ItemCardMapper.BuildEpisodeLabel(item));
+                item = await _api.GetItemAsync(item.SeriesId);
+            }
+
             Item = item;
             ItemCardMapper.RememberName(item.Id, item.Name);
             IsFavorite = item.UserData?.IsFavorite == true;
@@ -344,6 +444,8 @@ public partial class DetailViewModel : ObservableObject
             RefreshPlaybackSources();
             // 评分要打外部接口，先让页面出内容，评分回来了再补上
             _ = LoadRatingsAsync(item);
+            // 剧名 logo 同理：TMDB 的 logo 图拿到了就把文字标题换掉
+            _ = LoadTitleLogoAsync(item);
             // 媒体信息（分辨率 / 码率 / 音轨 / 字幕）要问一次服务器，同样异步补
             if (!IsSeries)
             {
@@ -352,7 +454,8 @@ public partial class DetailViewModel : ObservableObject
 
             if (item.Type == "Series")
             {
-                _resumeEpisode = ItemCardMapper.TryGetResumeEpisode(item.Id);
+                // 刚才由单集跳转过来时已经记了续播目标，别把「最近播放」页存的旧记录盖掉
+                _resumeEpisode ??= ItemCardMapper.TryGetResumeEpisode(item.Id);
                 var seasons = await _api.GetSeasonsAsync(item.Id);
                 Seasons = new ObservableCollection<BaseItemDto>(seasons.Items);
                 SelectedSeason = Seasons.FirstOrDefault();
@@ -378,6 +481,7 @@ public partial class DetailViewModel : ObservableObject
         ErrorMessage = null;
         BackdropSource = null;
         PosterSource = null;
+        TitleLogo = null;
         MediaChips.Clear();
         HasMediaInfo = false;
         IsTmdbItem = true;
@@ -391,6 +495,7 @@ public partial class DetailViewModel : ObservableObject
         EpisodeRows = new ObservableCollection<EpisodeRow>();
         PlaybackSources.Clear();
         HasMultiplePlaybackSources = false;
+        _resumeEpisode = null; // TMDB 在线条目没有续播概念，清掉上一部片的记录
         TmdbNotice = _settings.IsLoggedIn
             ? "媒体库里没有这部片，下面是 TMDB 的在线信息。"
             : "当前没有连接媒体服务器，下面是 TMDB 的在线信息。";
@@ -439,6 +544,7 @@ public partial class DetailViewModel : ObservableObject
             }
 
             ApplyGenres(Item);
+            _ = LoadTitleLogoAsync(Item);
             if (detail.VoteAverage is double vote)
             {
                 Ratings.Add(new RatingChip("TMDB", vote.ToString("0.0"),

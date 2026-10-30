@@ -184,9 +184,10 @@
                 </Grid>
 
                 <!-- 继续播放 -->
-                <StackPanel Margin="92,20,44,24" Spacing="10"
+                <!-- 右 0：横向列表一路顶到窗口右边缘（左 92 是给悬浮侧栏让位） -->
+                <StackPanel Margin="92,20,0,24" Spacing="10"
                             Visibility="{x:Bind ViewModel.ResumeSectionVisibility, Mode=OneWay}">
-                    <Grid>
+                    <Grid Margin="0,0,20,0">
                         <TextBlock Text="继续播放" FontSize="20" FontWeight="SemiBold" />
                         <HyperlinkButton Content="查看全部 ›" HorizontalAlignment="Right" FontSize="12"
                                          Command="{x:Bind ViewModel.ShowAllResumeCommand, Mode=OneWay}" />
@@ -210,9 +211,9 @@
                 </StackPanel>
 
                 <!-- 海报墙：媒体库「最新上架」或「TMDB 热门趋势」 -->
-                <StackPanel Margin="92,0,44,32" Spacing="10"
+                <StackPanel Margin="92,0,0,32" Spacing="10"
                             Visibility="{x:Bind ViewModel.LatestSectionVisibility, Mode=OneWay}">
-                    <Grid>
+                    <Grid Margin="0,0,20,0">
                         <TextBlock Text="{x:Bind ViewModel.WallTitle, Mode=OneWay}"
                                    FontSize="20" FontWeight="SemiBold" />
                         <HyperlinkButton Content="全部 ›" HorizontalAlignment="Right" FontSize="12"
@@ -242,9 +243,9 @@
                 </StackPanel>
 
                 <!-- 受欢迎的影片（TMDB popular，与热门趋势不同的一批片） -->
-                <StackPanel Margin="92,0,44,32" Spacing="10"
+                <StackPanel Margin="92,0,0,32" Spacing="10"
                             Visibility="{x:Bind ViewModel.PopularSectionVisibility, Mode=OneWay}">
-                    <Grid>
+                    <Grid Margin="0,0,20,0">
                         <TextBlock Text="{x:Bind ViewModel.PopularTitle, Mode=OneWay}"
                                    FontSize="20" FontWeight="SemiBold" />
                     </Grid>

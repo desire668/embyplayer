@@ -12,7 +12,9 @@
 
         <TextBlock Grid.Row="0" Text="最近播放" FontSize="24" FontWeight="Bold" Margin="0,0,0,12" />
 
+        <!-- 右负边距把内容区顶到窗口边缘，右侧不再留一条空底色 -->
         <local:MediaGridControl Grid.Row="1"
+                                Margin="0,0,-24,0"
                                 Items="{x:Bind ViewModel.Items, Mode=OneWay}"
                                 IsLoading="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
                                 ErrorMessage="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"

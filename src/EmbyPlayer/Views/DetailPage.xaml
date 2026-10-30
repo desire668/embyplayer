@@ -52,9 +52,9 @@
                                ImageOpened="DetailPoster_ImageOpened" />
                     </Border>
 
-                    <!-- 高度锁在海报高度（330）：简介再长也不会撑出海报底边，
-                         放不下的部分在简介区自己滚动 -->
-                    <Grid x:Name="InfoPanel" Grid.Column="1" Height="330"
+                    <!-- 最矮与海报齐平（330）；标题换成剧名 logo 后会比文字标题高出一截，
+                         内容装不下时整个面板自己长高，简介区再长也最多 220 高、内部滚动 -->
+                    <Grid x:Name="InfoPanel" Grid.Column="1" MinHeight="330"
                           VerticalAlignment="Top" RowSpacing="6">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -62,7 +62,17 @@
                         </Grid.RowDefinitions>
 
                         <StackPanel Grid.Row="0" Spacing="12">
+                            <!-- 标题：优先用 TMDB 的剧名 logo（有字那种剧名字体），
+                                 没有 logo 或 logo 加载失败时才退回纯文字片名 -->
+                            <Image Source="{x:Bind ViewModel.TitleLogo, Mode=OneWay}"
+                                   Visibility="{x:Bind ViewModel.TitleLogoVisibility, Mode=OneWay}"
+                                   MaxWidth="420" MaxHeight="90"
+                                   HorizontalAlignment="Left" VerticalAlignment="Center"
+                                   Stretch="Uniform"
+                                   IsHitTestVisible="False"
+                                   ImageFailed="TitleLogo_ImageFailed" />
                             <TextBlock Text="{x:Bind ViewModel.Item.Name, Mode=OneWay}"
+                                       Visibility="{x:Bind ViewModel.TitleTextVisibility, Mode=OneWay}"
                                        FontSize="32" FontWeight="Bold" TextWrapping="Wrap" />
                             <TextBlock Text="{x:Bind ViewModel.MetaText, Mode=OneWay}" FontSize="14" Opacity="0.7" />
 
@@ -164,9 +174,11 @@
                                        TextWrapping="Wrap" />
                         </StackPanel>
 
-                        <!-- 简介：只在海报底边以上滚动，不把整页撑长 -->
+                        <!-- 简介：高度自适应 —— 信息区装得下就全铺开，装不下时最多 220 高、
+                             在自己内部滚动；不会把简介压成只剩一两行 -->
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
                                       HorizontalScrollBarVisibility="Disabled"
+                                      MaxHeight="220"
                                       Padding="0,0,8,0">
                             <TextBlock Text="{x:Bind ViewModel.Item.Overview, Mode=OneWay}"
                                        TextWrapping="Wrap" LineHeight="20" Opacity="0.85" />

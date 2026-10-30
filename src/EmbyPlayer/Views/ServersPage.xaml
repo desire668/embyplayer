@@ -29,8 +29,10 @@
         <TextBlock Grid.Row="1" Text="{x:Bind ViewModel.Summary, Mode=OneWay}"
                    FontSize="13" Opacity="0.6" TextWrapping="Wrap" Margin="0,0,0,14" />
 
-        <!-- 内容源按协议分组：在线服务在上，Emby 媒体服务器在下 -->
-        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+        <!-- 内容源按协议分组：在线服务在上，Emby 媒体服务器在下。
+             右 -24 抵消页面边距：列表和滚动条顶到窗口右边缘，卡片自己再内缩 16 -->
+        <ScrollViewer Grid.Row="2" Margin="0,0,-24,0" Padding="0,0,16,0"
+                      VerticalScrollBarVisibility="Auto">
             <ItemsControl ItemsSource="{x:Bind ViewModel.Groups, Mode=OneWay}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:ServerGroup">

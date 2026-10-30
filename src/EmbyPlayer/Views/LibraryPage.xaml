@@ -6,22 +6,25 @@
     xmlns:local="using:EmbyPlayer.Views"
     xmlns:vm="using:EmbyPlayer.ViewModels">
 
-    <Grid Padding="24,16">
+    <!-- 左边留 24 与侧栏对齐，右边留 0：纵向滚动条和分类横排都一路顶到窗口右边缘，
+         不再在右侧留一条空底色 -->
+    <Grid Padding="24,16,0,16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- 顶部：分类 Tab + 排序工具栏 -->
-        <Grid Grid.Row="0" Margin="0,0,0,12">
+        <!-- 顶部：分类 Tab + 排序工具栏（概览模式下排序无意义，隐藏）
+             右留 16：工具栏本身不贴死窗口边，但下面内容区仍然是通铺的 -->
+        <Grid Grid.Row="0" Margin="0,0,16,12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <!-- 分类 ListView -->
+            <!-- 分类 Tab（第一项「概览」= 横向分类列表） -->
             <ListView Grid.Column="0" SelectionMode="Single"
                       ItemsSource="{x:Bind ViewModel.Views, Mode=OneWay}"
                       SelectedItem="{x:Bind ViewModel.SelectedView, Mode=TwoWay}">
@@ -59,9 +62,10 @@
                 </Button.Flyout>
             </Button>
 
-            <!-- 排序工具栏 -->
+            <!-- 排序工具栏：网格视图专用 -->
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8"
-                        VerticalAlignment="Center">
+                        VerticalAlignment="Center"
+                        Visibility="{x:Bind ViewModel.SortBarVisibility, Mode=OneWay}">
                 <TextBlock Text="排序：" VerticalAlignment="Center" Opacity="0.7" />
 
                 <ComboBox Width="110"
@@ -82,7 +86,7 @@
 
         <!-- 分类过滤条：从详情页点分类跳过来时出现 -->
         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8"
-                    Margin="0,0,0,10" VerticalAlignment="Center"
+                    Margin="0,0,16,10" VerticalAlignment="Center"
                     Visibility="{x:Bind ViewModel.FilterVisibility, Mode=OneWay}">
             <Border Background="{ThemeResource GenreChipBackground}" CornerRadius="14"
                     Padding="12,4">
@@ -98,11 +102,38 @@
             </Border>
         </StackPanel>
 
-        <Grid Grid.Row="2">
+        <!-- ============ 概览：纵向排列的横向分类列表 ============
+             每个分类独立横向滚动（拖动 / 滚轮 / 箭头），垂直滚动由这个外层 ScrollViewer 负责 -->
+        <ScrollViewer Grid.Row="2"
+                      Visibility="{x:Bind ViewModel.OverviewVisibility, Mode=OneWay}">
+            <ItemsControl ItemsSource="{x:Bind ViewModel.Sections, Mode=OneWay}"
+                          Margin="0,0,0,8">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:MediaSection">
+                        <!-- 分类之间的垂直间距（32px，需求 28～36） -->
+                        <local:HorizontalMediaSection
+                            Margin="0,0,0,32"
+                            Section="{x:Bind}"
+                            Title="{x:Bind Title, Mode=OneWay}"
+                            Description="{x:Bind Description, Mode=OneWay}"
+                            Items="{x:Bind Items, Mode=OneWay}"
+                            IsLoading="{x:Bind IsLoading, Mode=OneWay}"
+                            ItemInvoked="Section_ItemInvoked"
+                            ViewAllRequested="Section_ViewAllRequested" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <!-- ============ 网格视图：某个分类的全部内容 ============ -->
+        <Grid Grid.Row="2"
+              Visibility="{x:Bind ViewModel.GridVisibility, Mode=OneWay}">
             <!-- 卡片入场由 FluidItems 逐张错峰驱动；悬停 / 按下动效在 PosterCard 内部 -->
+            <!-- Padding 走 GridView 内部，滚动条仍然落在窗口最右侧 -->
             <GridView ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}"
                       SelectionMode="None" IsItemClickEnabled="True"
                       ItemClick="ItemsGrid_ItemClick"
+                      Padding="0,0,16,0"
                       anim:FluidItems.EntranceEnabled="True">
                 <GridView.ItemTemplate>
                     <DataTemplate x:DataType="vm:ItemCard">
@@ -119,5 +150,13 @@
                        HorizontalAlignment="Center" VerticalAlignment="Center"
                        TextWrapping="Wrap" MaxWidth="500" />
         </Grid>
+
+        <!-- 概览加载失败也提示一下（各分类自己吞错，能走到这的多半是拉分类列表就挂了） -->
+        <TextBlock Grid.Row="2"
+                   Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   TextWrapping="Wrap" MaxWidth="500"
+                   Visibility="{x:Bind ViewModel.OverviewVisibility, Mode=OneWay}" />
     </Grid>
 </Page>

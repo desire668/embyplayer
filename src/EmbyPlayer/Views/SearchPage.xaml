@@ -106,8 +106,11 @@
             <Border Height="1" Background="{ThemeResource BreadcrumbStroke}" />
         </StackPanel>
 
-        <!-- 结果按媒体服务器分组：一段 = 一台服务器的命中 -->
-        <ScrollViewer Grid.Row="3" Padding="0,0,8,24" VerticalScrollBarVisibility="Auto">
+        <!-- 结果按媒体服务器分组：一段 = 一台服务器的命中。
+             右 -24 抵消页面边距，结果区与滚动条一起顶到窗口右边缘（搜索框是居中的，
+             所以改的是这里的内边距，不动页面根 Padding） -->
+        <ScrollViewer Grid.Row="3" Margin="0,0,-24,0" Padding="0,0,16,24"
+                      VerticalScrollBarVisibility="Auto">
             <ItemsControl ItemsSource="{x:Bind ViewModel.Groups, Mode=OneWay}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:SearchGroup">

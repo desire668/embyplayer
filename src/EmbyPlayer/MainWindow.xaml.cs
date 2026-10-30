@@ -324,15 +324,64 @@ public sealed partial class MainWindow : Window
 
     private void UpdateRailSelection()
     {
-        RailHome.IsActive = _currentPageType == typeof(HomePage);
-        RailLibrary.IsActive = _currentPageType == typeof(LibraryPage);
-        RailSearch.IsActive = _currentPageType == typeof(SearchPage);
-        RailFavorites.IsActive = _currentPageType == typeof(FavoritesPage);
-        RailServers.IsActive = _currentPageType == typeof(ServersPage);
-        RailSettings.IsActive = _currentPageType == typeof(SettingsPage);
+        // 侧栏指示的是「当前所在区块」而不是当前页面类型：
+        // 从媒体库点进详情页时，页面类型是 DetailPage，但人还在媒体库这一栏，
+        // 面包屑已经按页面栈显示了正确路径，滑块和高亮必须跟着停在来源那一栏。
+        var section = CurrentSection();
 
-        // 胶囊里的首页 / 媒体库靠滑块拨动来指示，不靠各自的高亮
-        MovePillThumb(_currentPageType == typeof(LibraryPage));
+        RailHome.IsActive = section == typeof(HomePage);
+        RailLibrary.IsActive = section == typeof(LibraryPage);
+        RailSearch.IsActive = section == typeof(SearchPage);
+        RailFavorites.IsActive = section == typeof(FavoritesPage);
+        RailServers.IsActive = section == typeof(ServersPage);
+        RailSettings.IsActive = section == typeof(SettingsPage);
+
+        UpdatePillThumb(section);
+    }
+
+    /// <summary>
+    /// 当前所在区块：先看当前页面，页面不属于任何一栏（详情页等子页面）时，
+    /// 沿页面栈由近及远找最近的一栏 —— 也就是面包屑里它挂在谁的下面。
+    /// 找不到就归到首页。
+    /// </summary>
+    private Type CurrentSection()
+    {
+        if (IsRailPage(_currentPageType))
+        {
+            return _currentPageType!;
+        }
+
+        for (var i = ContentFrame.BackStack.Count - 1; i >= 0; i--)
+        {
+            var type = ContentFrame.BackStack[i].SourcePageType;
+            if (IsRailPage(type))
+            {
+                return type;
+            }
+        }
+
+        return typeof(HomePage);
+    }
+
+    /// <summary>页面自身就是侧栏上的一栏（与之相对的是详情页这类挂在某一栏下面的子页面）。</summary>
+    private static bool IsRailPage(Type? type) =>
+        type == typeof(HomePage) || type == typeof(LibraryPage) || type == typeof(SearchPage) ||
+        type == typeof(FavoritesPage) || type == typeof(ServersPage) || type == typeof(SettingsPage);
+
+    /// <summary>
+    /// 胶囊只有首页 / 媒体库两档：区块是这两者时把滑块拨过去；
+    /// 其余区块（搜索、收藏、服务器、设置）不在胶囊里，滑块留在原处不动。
+    /// </summary>
+    private void UpdatePillThumb(Type section)
+    {
+        if (section == typeof(LibraryPage))
+        {
+            MovePillThumb(true);
+        }
+        else if (section == typeof(HomePage))
+        {
+            MovePillThumb(false);
+        }
     }
 
     /// <summary>两档之间的行程：按钮 46 高 + 中间 2 间距。</summary>

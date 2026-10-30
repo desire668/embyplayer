@@ -7,10 +7,12 @@
     xmlns:vm="using:EmbyPlayer.ViewModels">
 
     <Grid>
+        <!-- Padding 走 GridView 内部：内容离窗口边 16，滚动条照样贴在最右侧 -->
         <GridView x:Name="ItemsGrid"
                   ItemsSource="{x:Bind Items, Mode=OneWay}"
                   SelectionMode="None" IsItemClickEnabled="True"
                   ItemClick="Grid_ItemClick"
+                  Padding="0,0,16,0"
                   anim:FluidItems.EntranceEnabled="True">
             <GridView.ItemTemplate>
                 <DataTemplate x:DataType="vm:ItemCard">

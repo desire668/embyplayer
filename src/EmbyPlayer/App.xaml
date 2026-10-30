@@ -89,6 +89,10 @@
                     <AcrylicBrush x:Key="BreadcrumbFill" TintColor="#F5F5F5" TintOpacity="0.6"
                                   TintLuminosityOpacity="0.9" FallbackColor="#F2F2F2F2" />
                     <SolidColorBrush x:Key="BreadcrumbStroke" Color="#22000000" />
+                    <!-- 横向分类列表的左右导航按钮：半透明玻璃圆钮 -->
+                    <AcrylicBrush x:Key="CarouselButtonFill" TintColor="#FFFFFF" TintOpacity="0.55"
+                                  TintLuminosityOpacity="0.8" FallbackColor="#CCFFFFFF" />
+                    <SolidColorBrush x:Key="CarouselButtonStroke" Color="#2E000000" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <!-- 详情页背景底纹的压暗蒙版：暗主题内容区是纯黑，蒙版也用纯黑 -->
@@ -156,6 +160,10 @@
                     <AcrylicBrush x:Key="BreadcrumbFill" TintColor="#1A1A1A" TintOpacity="0.6"
                                   TintLuminosityOpacity="0.7" FallbackColor="#E61A1A1A" />
                     <SolidColorBrush x:Key="BreadcrumbStroke" Color="#33FFFFFF" />
+                    <!-- 横向分类列表的左右导航按钮：半透明玻璃圆钮 -->
+                    <AcrylicBrush x:Key="CarouselButtonFill" TintColor="#1A1A1A" TintOpacity="0.55"
+                                  TintLuminosityOpacity="0.6" FallbackColor="#CC1A1A1A" />
+                    <SolidColorBrush x:Key="CarouselButtonStroke" Color="#33FFFFFF" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>

@@ -121,6 +121,61 @@ public sealed class TmdbClient
         return response.Results.FirstOrDefault();
     }
 
+    /// <summary>剧名 logo 的请求宽度：详情页标题区最宽 480，500 够了，再大也是浪费流量。</summary>
+    public const int LogoWidth = 500;
+
+    /// <summary>
+    /// 取剧名 logo（images 接口里的 logos）。挑法：先按语言（中文 → 英文 → 无字），
+    /// 同语言里优先 png（WinUI 的位图解码不了 svg，虽然能显示但多了一种数据源），
+    /// 最后按社区评分降序 —— 也就是「中文台词 + 位图 + 大家觉得好看的那张」。
+    /// 一张都没有时返回 null，由调用方退回纯文字标题。
+    /// </summary>
+    public async Task<string?> GetLogoPathAsync(string kind, string tmdbId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(tmdbId))
+        {
+            return null;
+        }
+
+        // include_image_language 用逗号分隔多语言，null 表示「没有语言标记的图」；
+        // 不传这个参数时 TMDB 只回默认语言的那批，中文 logo 往往取不到。
+        // api_key / Bearer 由 BuildRequest 统一补上。
+        var url = $"{BaseUrl}/{kind}/{Uri.EscapeDataString(tmdbId)}/images"
+                  + "?include_image_language=zh,zh-CN,en,ja,ko,null";
+        TmdbImages images;
+        try
+        {
+            images = await GetAsync<TmdbImages>(url, ct);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException
+                                   or JsonException or InvalidOperationException)
+        {
+            return null;
+        }
+
+        var best = images.Logos
+            .Where(l => !string.IsNullOrEmpty(l.FilePath))
+            .OrderBy(LanguageRank)
+            .ThenBy(IsSvg)
+            .ThenByDescending(l => l.VoteAverage ?? 0)
+            .Select(l => l.FilePath!)
+            .FirstOrDefault();
+
+        return best;
+
+        // zh 最优、en 次之、其它语言再次、无字（null）最后
+        static int LanguageRank(TmdbImage logo) => logo.Language switch
+        {
+            null or "" => 3,
+            "zh" or "zh-CN" or "zh-TW" or "zh-HK" => 0,
+            "en" or "en-US" => 1,
+            _ => 2
+        };
+
+        static bool IsSvg(TmdbImage logo) =>
+            logo.FilePath!.EndsWith(".svg", StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>电影详情（补片长与类型名，zh-CN）。</summary>
     public async Task<TmdbMovieDetail?> GetMovieDetailAsync(int movieId, CancellationToken ct = default)
     {
