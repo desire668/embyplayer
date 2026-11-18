@@ -40,6 +40,10 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _reduceMotion;
 
+    /// <summary>关闭主窗口时最小化而不是退出（默认开启）。</summary>
+    [ObservableProperty]
+    private bool _minimizeOnClose = true;
+
     [ObservableProperty]
     private int _heroIntervalIndex;
 
@@ -171,6 +175,7 @@ public partial class SettingsViewModel : ObservableObject
 
         _autoPlayNext = settings.Current.AutoPlayNext;
         _reduceMotion = settings.Current.ReduceMotion;
+        _minimizeOnClose = settings.Current.MinimizeOnClose;
         _heroIntervalIndex = NearestIndex(HeroIntervals, settings.Current.HeroAutoPlaySeconds);
         _themeIndex = settings.Current.ThemeMode?.ToLowerInvariant() switch
         {
@@ -255,6 +260,17 @@ public partial class SettingsViewModel : ObservableObject
             return;
         }
         _settings.Current.ReduceMotion = value;
+        _settings.Save();
+    }
+
+    /// <summary>关闭按钮行为：MainWindow 在 Closing 里实时读设置，改完立即生效，不用重启。</summary>
+    partial void OnMinimizeOnCloseChanged(bool value)
+    {
+        if (!_initialized)
+        {
+            return;
+        }
+        _settings.Current.MinimizeOnClose = value;
         _settings.Save();
     }
 

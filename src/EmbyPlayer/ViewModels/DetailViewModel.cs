@@ -1,14 +1,13 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using EmbyPlayer.Animations;
 using EmbyPlayer.Models;
 using EmbyPlayer.Services;
 using EmbyPlayer.Views;
 using Microsoft.UI.Xaml.Media;
 
 namespace EmbyPlayer.ViewModels;
-
-public record SubtitleOption(int StreamIndex, string Label, MediaStreamInfo? Stream);
 
 public partial class DetailViewModel : ObservableObject
 {
@@ -26,8 +25,7 @@ public partial class DetailViewModel : ObservableObject
     /// <summary>剧集详情页的续播目标（来自「最近播放」列表记录的那一集）。</summary>
     private ResumeEpisode? _resumeEpisode;
 
-    // 弹幕源：手动选择的 XML 文件（优先），或从弹幕服务器自动获取的结果
-    private string? _danmakuXmlPath;
+    // 从弹幕服务器自动获取到的弹幕（按设置里的开关决定用不用）
     private List<DanmakuEntry>? _autoFetchedDanmaku;
 
     [ObservableProperty]
@@ -74,7 +72,7 @@ public partial class DetailViewModel : ObservableObject
         OnPropertyChanged(nameof(PlaybackSourceText));
 
     public Microsoft.UI.Xaml.Visibility PlaybackSourceVisibility =>
-        HasMultiplePlaybackSources && !IsTmdbItem
+        HasMultiplePlaybackSources && !IsTmdbItem && !IsBoxSet
             ? Microsoft.UI.Xaml.Visibility.Visible
             : Microsoft.UI.Xaml.Visibility.Collapsed;
 
@@ -113,9 +111,9 @@ public partial class DetailViewModel : ObservableObject
 
     partial void OnTmdbNoticeChanged(string value) => OnPropertyChanged(nameof(TmdbNoticeVisibility));
 
-    /// <summary>播放 / 播放源 / 收藏：TMDB 在线条目没有片源，整排按钮隐藏。</summary>
+    /// <summary>播放 / 播放源 / 收藏：TMDB 在线条目与合集（没有单一媒体源）不显示播放。</summary>
     public Microsoft.UI.Xaml.Visibility PlayVisibility =>
-        IsTmdbItem ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
+        IsTmdbItem || IsBoxSet ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
 
     partial void OnIsTmdbItemChanged(bool value)
     {
@@ -148,12 +146,6 @@ public partial class DetailViewModel : ObservableObject
 
     [ObservableProperty]
     private string _statusText = "";
-
-    [ObservableProperty]
-    private List<SubtitleOption> _subtitleOptions = new();
-
-    [ObservableProperty]
-    private SubtitleOption? _selectedSubtitle;
 
     [ObservableProperty]
     private bool _isFavorite;
@@ -277,22 +269,8 @@ public partial class DetailViewModel : ObservableObject
     [ObservableProperty]
     private bool _danmakuEnabled;
 
-    [ObservableProperty]
-    private string _danmakuFileName = "未选择";
-
-    [ObservableProperty]
-    private string _danmakuStatus = "";
-
-    /// <summary>由页面订阅，弹出字幕选择对话框；用户确认后调用 ConfirmPlayAsync。</summary>
-    public event Func<Task>? RequestSubtitleChoice;
-
-    /// <summary>由页面调用：用户选好弹幕 XML 文件后设置路径并更新显示名。</summary>
-    public void SetDanmakuFile(string path)
-    {
-        _danmakuXmlPath = path;
-        _autoFetchedDanmaku = null; // 手动选择优先，清除自动获取结果
-        DanmakuFileName = string.IsNullOrEmpty(path) ? "未选择" : Path.GetFileName(path);
-    }
+    /// <summary>本次播放选用的字幕轨（服务器里标了默认的那条；没有就不挂字幕）。</summary>
+    private MediaStreamInfo? _subtitleStream;
 
     public DetailViewModel(EmbyApiClient api, NavigationService navigation, PlaybackService playback,
         DanmakuService danmaku, SettingsService settings, RatingsService ratings, TmdbClient tmdb)
@@ -335,6 +313,11 @@ public partial class DetailViewModel : ObservableObject
             {
                 parts.Add(item.OfficialRating);
             }
+            // 合集没有年份 / 时长，用成员数当副标题
+            if (IsBoxSet && BoxSetCount > 0)
+            {
+                parts.Add($"共 {BoxSetCount} 部");
+            }
             return string.Join(" · ", parts);
         }
     }
@@ -355,6 +338,58 @@ public partial class DetailViewModel : ObservableObject
 
     public Microsoft.UI.Xaml.Visibility EpisodesVisibility =>
         IsSeries ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    // ---------------- 合集（BoxSet） ----------------
+
+    /// <summary>
+    /// 当前条目是合集。合集本身没有媒体源（播放会失败），内容是一堆独立条目，
+    /// 所以这里改用网格展示成员，播放入口收起来（点成员进各自的详情页）。
+    /// </summary>
+    [ObservableProperty]
+    private bool _isBoxSet;
+
+    /// <summary>合集成员卡片（点进去看各自的详情）。</summary>
+    [ObservableProperty]
+    private ObservableCollection<ItemCard> _boxSetItems = new();
+
+    [ObservableProperty]
+    private bool _isLoadingBoxSet;
+
+    [ObservableProperty]
+    private int _boxSetCount;
+
+    /// <summary>合集成员数：标题旁显示，成员没拉回来之前先用服务器的 ChildCount。</summary>
+    public string BoxSetHeader => BoxSetCount > 0 ? $"合集内容（{BoxSetCount}）" : "合集内容";
+
+    partial void OnBoxSetCountChanged(int value)
+    {
+        OnPropertyChanged(nameof(BoxSetHeader));
+        OnPropertyChanged(nameof(MetaText));
+    }
+
+    public Microsoft.UI.Xaml.Visibility BoxSetVisibility =>
+        IsBoxSet ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    /// <summary>合集为空时的占位文案（还没加载完不显示）。</summary>
+    public Microsoft.UI.Xaml.Visibility BoxSetEmptyVisibility =>
+        IsBoxSet && !IsLoadingBoxSet && BoxSetItems.Count == 0
+            ? Microsoft.UI.Xaml.Visibility.Visible
+            : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    partial void OnBoxSetItemsChanged(ObservableCollection<ItemCard> value)
+    {
+        OnPropertyChanged(nameof(BoxSetEmptyVisibility));
+    }
+
+    partial void OnIsBoxSetChanged(bool value)
+    {
+        OnPropertyChanged(nameof(BoxSetVisibility));
+        OnPropertyChanged(nameof(BoxSetEmptyVisibility));
+        OnPropertyChanged(nameof(PlayVisibility));
+        OnPropertyChanged(nameof(PlaybackSourceVisibility));
+    }
+
+    partial void OnIsLoadingBoxSetChanged(bool value) => OnPropertyChanged(nameof(BoxSetEmptyVisibility));
 
     public string FavoriteButtonText => IsFavorite ? "♥ 已收藏" : "♡ 收藏";
 
@@ -404,6 +439,10 @@ public partial class DetailViewModel : ObservableObject
         HasMediaInfo = false;
         IsTmdbItem = false;
         TmdbNotice = "";
+        IsBoxSet = false;
+        IsLoadingBoxSet = false;
+        BoxSetCount = 0;
+        BoxSetItems = new ObservableCollection<ItemCard>();
         // 每次进入详情都重置续播目标：上一部片的续播记录不能带到这一部
         _resumeEpisode = null;
 
@@ -427,6 +466,9 @@ public partial class DetailViewModel : ObservableObject
             Item = item;
             ItemCardMapper.RememberName(item.Id, item.Name);
             IsFavorite = item.UserData?.IsFavorite == true;
+            // 合集（BoxSet）在服务器上是「文件夹」：自身没有媒体源，成员要单独取
+            IsBoxSet = item.Type == "BoxSet";
+            BoxSetCount = item.ChildCount ?? 0;
             var primaryTag = item.ImageTags is not null && item.ImageTags.TryGetValue("Primary", out var tag)
                 ? tag : null;
             // 与列表走同一个宽度常量，保证 URL 一致 → 命中同一份缓存
@@ -447,9 +489,15 @@ public partial class DetailViewModel : ObservableObject
             // 剧名 logo 同理：TMDB 的 logo 图拿到了就把文字标题换掉
             _ = LoadTitleLogoAsync(item);
             // 媒体信息（分辨率 / 码率 / 音轨 / 字幕）要问一次服务器，同样异步补
-            if (!IsSeries)
+            if (!IsSeries && !IsBoxSet)
             {
                 _ = LoadMediaInfoAsync(item.Id, item);
+            }
+
+            // 合集：内容是一堆独立条目，网格拉回来再补上
+            if (IsBoxSet)
+            {
+                await LoadBoxSetItemsAsync(item);
             }
 
             if (item.Type == "Series")
@@ -468,6 +516,38 @@ public partial class DetailViewModel : ObservableObject
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// 拉合集里的成员条目。合集可能是空的，也可能嵌套合集，
+    /// 取回来的每一条都转成卡片（点开各自的详情页）。
+    /// </summary>
+    private async Task LoadBoxSetItemsAsync(BaseItemDto boxSet)
+    {
+        IsLoadingBoxSet = true;
+        try
+        {
+            var result = await _api.GetBoxSetItemsAsync(boxSet.Id);
+
+            // 期间可能已经翻到别的条目：别再回填
+            if (!ReferenceEquals(Item, boxSet))
+            {
+                return;
+            }
+
+            BoxSetItems = new ObservableCollection<ItemCard>(
+                result.Items.Select(i => ItemCardMapper.ToCard(_api, i)));
+            // 服务器给的 ChildCount 偶尔不含子合集，以实际取回的条数为准
+            BoxSetCount = result.Items.Count;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            IsLoadingBoxSet = false;
         }
     }
 
@@ -495,6 +575,10 @@ public partial class DetailViewModel : ObservableObject
         EpisodeRows = new ObservableCollection<EpisodeRow>();
         PlaybackSources.Clear();
         HasMultiplePlaybackSources = false;
+        IsBoxSet = false;
+        IsLoadingBoxSet = false;
+        BoxSetCount = 0;
+        BoxSetItems = new ObservableCollection<ItemCard>();
         _resumeEpisode = null; // TMDB 在线条目没有续播概念，清掉上一部片的记录
         TmdbNotice = _settings.IsLoggedIn
             ? "媒体库里没有这部片，下面是 TMDB 的在线信息。"
@@ -563,8 +647,7 @@ public partial class DetailViewModel : ObservableObject
     }
 
     /// <summary>把 Emby 的类型标签变成可点击的分类胶囊。</summary>
-    private void ApplyGenres(BaseItemDto item)
-    {
+    private void ApplyGenres(BaseItemDto item)    {
         Genres.Clear();
         foreach (var genre in item.Genres ?? new List<string>())
         {
@@ -745,10 +828,18 @@ public partial class DetailViewModel : ObservableObject
         }
     }
 
+    /// <summary>合集里点了某一部：进它自己的详情页（与媒体库卡片一样带海报飞入动画）。</summary>
+    public void OpenCard(ItemCard card)
+    {
+        if (!string.IsNullOrEmpty(card.Id))
+        {
+            _navigation.NavigateTo<DetailPage>(card.Id, FluidNavigation.PosterPush);
+        }
+    }
+
     /// <summary>点分类胶囊：跳媒体库并按该类型过滤（电影进电影库，剧集进剧集库）。</summary>
     [RelayCommand]
-    private void OpenGenre(GenreChip? chip)
-    {
+    private void OpenGenre(GenreChip? chip)    {
         if (chip is null || string.IsNullOrWhiteSpace(chip.Name))
         {
             return;
@@ -831,6 +922,13 @@ public partial class DetailViewModel : ObservableObject
             return;
         }
 
+        // 合集是「文件夹」，没有单一媒体源：点合集里的某部片才播得起来
+        if (IsBoxSet)
+        {
+            ErrorMessage = "合集本身没有片源，请点下面的影片开始播放。";
+            return;
+        }
+
         if (!IsSeries)
         {
             await PreparePlaybackAsync(Item);
@@ -891,33 +989,18 @@ public partial class DetailViewModel : ObservableObject
             _playbackClient?.Dispose();
             _playbackClient = client;
             _plan = await _playback.PrepareAsync(playTarget, client);
-            var options = new List<SubtitleOption> { new(-1, "无字幕", null) };
-            options.AddRange(_plan.SubtitleStreams.Select(s =>
-                new SubtitleOption(s.Index,
-                    string.IsNullOrEmpty(s.DisplayTitle)
-                        ? (string.IsNullOrEmpty(s.Language) ? $"字幕 #{s.Index}" : s.Language)
-                        : s.DisplayTitle,
-                    s)));
-            SubtitleOptions = options;
-            SelectedSubtitle = options.FirstOrDefault(o => o.Stream?.IsDefault == true) ?? options[0];
 
-            // 初始化弹幕选项：从设置读取开关，清空上次手动选择，尝试从服务器自动获取
+            // 直接播放：不再弹字幕选择框，服务器里标了「默认」的那条字幕自动挂上，
+            // 没有默认轨就不挂（内嵌字幕由 mpv 自己识别）。
+            _subtitleStream = _plan.SubtitleStreams.FirstOrDefault(s => s.IsDefault);
+
+            // 弹幕：按设置里的开关决定要不要，能自动拿到就用，拿不到静默跳过
             DanmakuEnabled = _settings.Current.DanmakuEnabled;
-            _danmakuXmlPath = null;
             _autoFetchedDanmaku = null;
-            DanmakuFileName = "未选择";
-            DanmakuStatus = "";
             await TryAutoFetchDanmakuAsync(target);
 
             IsPreparingPlayback = false;
-            if (RequestSubtitleChoice is not null)
-            {
-                await RequestSubtitleChoice.Invoke();
-            }
-            else
-            {
-                await ConfirmPlayAsync();
-            }
+            await ConfirmPlayAsync();
         }
         catch (Exception ex)
         {
@@ -984,7 +1067,6 @@ public partial class DetailViewModel : ObservableObject
         }
         try
         {
-            DanmakuStatus = "正在从弹幕服务器获取…";
             if (serverUrl.Contains("{title}", StringComparison.OrdinalIgnoreCase))
             {
                 // 兼容旧版：URL 模板直接返回 bilibili XML
@@ -1003,22 +1085,12 @@ public partial class DetailViewModel : ObservableObject
                 _autoFetchedDanmaku = await _danmaku.FetchFromLogVarAsync(
                     serverUrl, searchTitle, season: null, episode: episodeNumber);
             }
-            DanmakuStatus = _autoFetchedDanmaku.Count > 0
-                ? $"弹幕服务器返回 {_autoFetchedDanmaku.Count} 条弹幕"
-                : "弹幕服务器未返回弹幕";
         }
-        catch (Exception ex)
+        catch
         {
+            // 弹幕只是附加效果：拿不到就当没有，不影响正常播放
             _autoFetchedDanmaku = null;
-            DanmakuStatus = $"弹幕服务器获取失败：{ex.Message}";
         }
-    }
-
-    /// <summary>用户在对话框中切换弹幕开关后清除手动选择时调用。</summary>
-    public void ClearDanmakuSelection()
-    {
-        _danmakuXmlPath = null;
-        DanmakuFileName = "未选择";
     }
 
     public async Task ConfirmPlayAsync()
@@ -1036,7 +1108,7 @@ public partial class DetailViewModel : ObservableObject
             {
                 danmakuAssPath = await PrepareDanmakuAssAsync(plan.Item);
             }
-            await _playback.PlayAsync(plan, SelectedSubtitle?.Stream, danmakuAssPath);
+            await _playback.PlayAsync(plan, _subtitleStream, danmakuAssPath);
             StatusText = $"正在播放：{plan.Item.Name}";
         }
         catch (Exception ex)
@@ -1045,18 +1117,10 @@ public partial class DetailViewModel : ObservableObject
         }
     }
 
-    /// <summary>将弹幕源（手动文件优先，否则用自动获取结果）转换为 ASS 字幕文件。</summary>
+    /// <summary>把自动获取到的弹幕转成 ASS 字幕文件；没有弹幕就不挂。</summary>
     private async Task<string?> PrepareDanmakuAssAsync(BaseItemDto item)
     {
-        List<DanmakuEntry>? entries = null;
-        if (!string.IsNullOrEmpty(_danmakuXmlPath))
-        {
-            entries = await Task.Run(() => _danmaku.ParseFile(_danmakuXmlPath!));
-        }
-        else if (_autoFetchedDanmaku is { Count: > 0 })
-        {
-            entries = _autoFetchedDanmaku;
-        }
+        var entries = _autoFetchedDanmaku;
 
         if (entries is null || entries.Count == 0)
         {

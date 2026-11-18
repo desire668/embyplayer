@@ -90,6 +90,12 @@ public class AppSettings
     /// <summary>减弱动效：关闭卡片浮起 / 视差 / 转场，只保留状态切换。</summary>
     public bool ReduceMotion { get; set; }
 
+    /// <summary>
+    /// 点窗口关闭按钮时的行为：true（默认）= 最小化到任务栏，false = 直接退出程序。
+    /// 最小化状态下再点一次关闭（或任务栏右键「关闭窗口」）才会真正退出，见 MainWindow。
+    /// </summary>
+    public bool MinimizeOnClose { get; set; } = true;
+
     /// <summary>颜色模式：system / light / dark。MainWindow 在启动和设置变更时应用。</summary>
     public string ThemeMode { get; set; } = "system";
 

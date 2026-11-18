@@ -30,6 +30,9 @@ public class BaseItemDto
     public int? ProductionYear { get; set; }
     public int? IndexNumber { get; set; }
 
+    /// <summary>文件夹 / 合集下的直接子项数量（合集详情页先用它显示总数）。</summary>
+    public int? ChildCount { get; set; }
+
     /// <summary>季号（Episode 的 ParentIndexNumber，即第几季）。</summary>
     public int? ParentIndexNumber { get; set; }
     public string? ParentId { get; set; }

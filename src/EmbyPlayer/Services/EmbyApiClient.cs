@@ -177,6 +177,17 @@ public sealed class EmbyApiClient : IDisposable
         await GetAsync<QueryResult<BaseItemDto>>(
             $"/Shows/{seriesId}/Seasons?UserId={UserId}&Fields=UserData", ct);
 
+    /// <summary>
+    /// 合集（BoxSet）里的条目。合集自己只是一个「文件夹」，没有媒体源，
+    /// 详情页要展示的内容全在这条接口里（不递归，合集里可以直接放合集）。
+    /// </summary>
+    public async Task<QueryResult<BaseItemDto>> GetBoxSetItemsAsync(string boxSetId, int limit = 500,
+        CancellationToken ct = default) =>
+        await GetAsync<QueryResult<BaseItemDto>>(
+            $"/Users/{UserId}/Items?ParentId={boxSetId}&Recursive=false" +
+            "&Fields=Overview,PrimaryImageAspectRatio,SortName,UserData,ProductionYear,ProviderIds" +
+            $"&ImageTypeLimit=1&Limit={limit}", ct);
+
     public async Task<QueryResult<BaseItemDto>> GetEpisodesAsync(string seriesId, string seasonId, CancellationToken ct = default) =>
         await GetAsync<QueryResult<BaseItemDto>>(
             $"/Shows/{seriesId}/Episodes?UserId={UserId}&SeasonId={seasonId}" +

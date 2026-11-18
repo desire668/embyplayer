@@ -1,4 +1,4 @@
-using EmbyPlayer.Animations;
+﻿using EmbyPlayer.Animations;
 using EmbyPlayer.Services;
 using EmbyPlayer.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
@@ -6,7 +6,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
-using Windows.Storage.Pickers;
 
 namespace EmbyPlayer.Views;
 
@@ -18,7 +17,9 @@ public sealed partial class DetailPage : Page
     {
         ViewModel = App.Services.GetRequiredService<DetailViewModel>();
         InitializeComponent();
-        ViewModel.RequestSubtitleChoice += ShowSubtitleChoiceAsync;
+
+        // 合集里点某一部：进它自己的详情页（海报飞入动画由 MediaGridControl 负责登记）
+        BoxSetGrid.ItemChosen += card => ViewModel.OpenCard(card);
 
         // 剧集元数据回来后才知道要不要显示跳转按钮（电影详情页不显示）
         ViewModel.PropertyChanged += (_, args) =>
@@ -178,16 +179,6 @@ public sealed partial class DetailPage : Page
         ViewModel.TitleLogo = null;
     }
 
-    private async Task ShowSubtitleChoiceAsync()
-    {
-        SubtitleDialog.XamlRoot = XamlRoot;
-        var result = await SubtitleDialog.ShowAsync();
-        if (result == ContentDialogResult.Primary)
-        {
-            await ViewModel.ConfirmPlayAsync();
-        }
-    }
-
     private void Episodes_ItemClick(object sender, ItemClickEventArgs e)
     {
         if (e.ClickedItem is EpisodeRow row)
@@ -261,30 +252,5 @@ public sealed partial class DetailPage : Page
         JumpIcon.Glyph = _atBottom ? "\uE70D" : "\uE70E";
         JumpLabel.Text = _atBottom ? "回顶部" : "到底部";
         ToolTipService.SetToolTip(JumpButton, _atBottom ? "回到页面顶部" : "直达集列表底部");
-    }
-
-    /// <summary>浏览本地弹幕 XML 文件（bilibili 格式）。</summary>
-    private async void BrowseDanmaku_Click(object sender, RoutedEventArgs e)
-    {
-        var picker = new FileOpenPicker
-        {
-            SuggestedStartLocation = PickerLocationId.ComputerFolder
-        };
-        picker.FileTypeFilter.Add(".xml");
-
-        var navigation = App.Services.GetRequiredService<NavigationService>();
-        var hwnd = (navigation.Shell as MainWindow)?.Hwnd ?? IntPtr.Zero;
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
-
-        var file = await picker.PickSingleFileAsync();
-        if (file is not null)
-        {
-            ViewModel.SetDanmakuFile(file.Path);
-            // 选择文件后自动开启弹幕开关
-            if (!ViewModel.DanmakuEnabled)
-            {
-                ViewModel.DanmakuEnabled = true;
-            }
-        }
     }
 }

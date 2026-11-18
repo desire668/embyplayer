@@ -211,11 +211,11 @@
                         </local:SettingRow.Body>
                     </local:SettingRow>
 
-                    <TextBlock Text="界面" Style="{StaticResource SettingsGroupHeader}" />
-                    <local:SettingRow Header="减弱动效"
-                                      Description="关闭卡片浮起、海报视差、错峰入场与页面推入动画；系统辅助功能里关闭动画时也会自动生效">
+                    <TextBlock Text="窗口" Style="{StaticResource SettingsGroupHeader}" />
+                    <local:SettingRow Header="关闭时最小化"
+                                      Description="点窗口右上角的关闭按钮时最小化到任务栏，而不是退出程序；想真正退出时，在最小化状态再点一次关闭（或任务栏右键「关闭窗口」）即可">
                         <local:SettingRow.Body>
-                            <ToggleSwitch IsOn="{x:Bind ViewModel.ReduceMotion, Mode=TwoWay}"
+                            <ToggleSwitch IsOn="{x:Bind ViewModel.MinimizeOnClose, Mode=TwoWay}"
                                           OnContent="" OffContent="" MinWidth="0" />
                         </local:SettingRow.Body>
                     </local:SettingRow>

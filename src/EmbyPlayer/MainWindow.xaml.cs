@@ -86,6 +86,9 @@ public sealed partial class MainWindow : Window
 
         SetupCustomTitleBar();
 
+        // 关闭按钮的行为由设置决定（默认最小化到任务栏而不是退出）
+        AppWindow.Closing += OnAppWindowClosing;
+
         // 标题栏跟随应用主题：暗色纯黑、亮色白色，主题切换时同步刷新
         // （Window 本身无 ActualTheme，借助根元素的主题）
         ApplyThemeTitleBar(Root.ActualTheme);
@@ -132,6 +135,45 @@ public sealed partial class MainWindow : Window
         catch (Exception ex)
         {
             App.WriteCrashLog($"设置自绘标题栏失败：{ex}");
+        }
+    }
+
+    // ==================== 关闭按钮 ====================
+
+    /// <summary>
+    /// 点窗口关闭按钮（或 Alt+F4）：设置里「关闭时最小化」开启时只最小化到任务栏，不退出程序。
+    /// 已经处于最小化状态时再关闭就放行，保证用户始终能真正退出，不会被这个选项困住。
+    /// 更新安装走 <see cref="App.ExitForUpdate"/>（Environment.Exit），不经过这里。
+    /// </summary>
+    private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
+    {
+        if (args.Cancel || !Settings.Current.MinimizeOnClose)
+        {
+            return;
+        }
+
+        if (sender.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized })
+        {
+            return;
+        }
+
+        args.Cancel = true;
+        MinimizeToTaskbar();
+    }
+
+    /// <summary>收进任务栏（不销毁窗口，页面状态与播放进度都保留）。</summary>
+    private void MinimizeToTaskbar()
+    {
+        try
+        {
+            if (AppWindow.Presenter is OverlappedPresenter presenter)
+            {
+                presenter.Minimize();
+            }
+        }
+        catch (Exception ex)
+        {
+            App.WriteCrashLog($"最小化窗口失败：{ex}");
         }
     }
 
