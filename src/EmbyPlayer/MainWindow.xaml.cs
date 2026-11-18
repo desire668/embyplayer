@@ -13,6 +13,7 @@ using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
 using System.ComponentModel;
 using System.IO;
+using System.Runtime.InteropServices;
 using Windows.Foundation;
 using Windows.Graphics;
 using Windows.System;
@@ -44,9 +45,25 @@ public sealed partial class MainWindow : Window
     /// <summary>自绘标题栏条的高度，和 XAML 里 TitleBarHost 保持一致（TitleBarHeightOption.Tall）。</summary>
     private const double TitleBarHeight = 40;
 
+    /// <summary>
+    /// 窗口能被拖到的最小尺寸（DIP，会被系统按显示器缩放换算成像素）。
+    /// 再小下去侧栏上下两组按钮就会撞在一起，首页大图的「播放 / 详情」也会被标题挤掉。
+    /// </summary>
+    private const double MinWindowWidth = 900;
+    private const double MinWindowHeight = 620;
+
+    // 侧栏「正常态」的实测高度：上面一组（胶囊 98 + 间距 10 + 搜索 46 + 间距 10 + 收藏 46 = 210）
+    // 加下面一组（三个 46 圆 + 两个 10 间距 + 底部留白 24 = 182）再加顶部一点余量。
+    // 侧栏撑不到这么高时改走滚动兜底，见 UpdateRailLayout。
+    private const double RailNaturalHeight = 210 + 182 + 12;
+
+    private bool _railCompact;
+
     public MainWindow()
     {
         InitializeComponent();
+
+        _minSizeOwner = this;
 
         var navigation = App.Services.GetRequiredService<NavigationService>();
         navigation.Frame = ContentFrame;
@@ -55,6 +72,10 @@ public sealed partial class MainWindow : Window
         ContentFrame.Navigated += ContentFrame_Navigated;
 
         AppWindow.Resize(new SizeInt32(1280, 800));
+
+        // 系统里限制最小尺寸：拖边框 / 双击标题栏 / 拖到屏幕边缘贴靠都不会再压到
+        // 「侧栏两组按钮叠在一起」那么小。必须在窗口句柄就绪后设置，失败就退回 XAML 兜底
+        ApplyWindowMinSize();
 
         // 设置窗口标题栏图标（任务栏 / Alt+Tab 仍用得到；窗口左上角不再显示图标和名字）
         var iconPath = Path.Combine(AppContext.BaseDirectory, "app-icon.ico");
@@ -95,17 +116,268 @@ public sealed partial class MainWindow : Window
             Root.SizeChanged += (_, _) =>
             {
                 UpdateDragRegion();
+                UpdateRailLayout();
                 if (SearchOverlay.Visibility == Visibility.Visible)
                 {
                     PositionSearchPanel();
                 }
             };
-            Root.Loaded += (_, _) => DispatcherQueue.TryEnqueue(UpdateDragRegion);
+            Root.Loaded += (_, _) =>
+            {
+                UpdateDragRegion();
+                UpdateRailLayout();
+            };
             UpdateDragRegion();
         }
         catch (Exception ex)
         {
             App.WriteCrashLog($"设置自绘标题栏失败：{ex}");
+        }
+    }
+
+    // ==================== 窗口最小尺寸 ====================
+
+    private const int WmGetMinMaxInfo = 0x0024;
+
+    /// <summary>
+    /// 窗口子类化回调。
+    /// 注意：这个委托必须被托管侧长期持有（见 _minSizeHook、_enumChildCallback），
+    /// 否则 GC 回收后原生代码再回调就会 "A callback was made on a garbage collected delegate"，
+    /// 进程被 CLR 直接终止 —— 这类崩溃不走 App.UnhandledException，连日志都不会留。
+    /// </summary>
+    private delegate IntPtr WindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    private delegate bool EnumChildProc(IntPtr hWnd, IntPtr lParam);
+
+    /// <summary>子类化回调本身：静态字段保证与进程同生命周期，是修复闪退的关键。</summary>
+    private static readonly WindowProc MinSizeWindowProc = MinSizeWindowProcImpl;
+
+    /// <summary>用来收集 EnumChildWindows 的子窗口句柄，只做一次中转。</summary>
+    private static readonly List<IntPtr> EnumChildrenBuffer = new();
+
+    /// <summary>EnumChildWindows 的回调（静态，同样不能是临时委托）。</summary>
+    private static readonly EnumChildProc EnumChildCallback = (child, _) =>
+    {
+        EnumChildrenBuffer.Add(child);
+        return true;
+    };
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MinMaxInfo
+    {
+        public NativePoint Reserved;
+        public NativePoint MaxSize;
+        public NativePoint MaxPosition;
+        public NativePoint MinTrackSize;
+        public NativePoint MaxTrackSize;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumChildWindows(IntPtr parent, EnumChildProc callback, IntPtr lParam);
+
+    private static readonly IntPtr GwlpWndProc = new(-4);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
+    private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, IntPtr index, IntPtr newValue);
+
+    [DllImport("user32.dll", EntryPoint = "CallWindowProcW")]
+    private static extern IntPtr CallWindowProc(IntPtr prev, IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    /// <summary>各窗口句柄原来的 WndProc，子类化后要转发给它。</summary>
+    private readonly Dictionary<IntPtr, IntPtr> _minSizePrevProcs = new();
+
+    /// <summary>被挂上子类过程的窗口句柄，避免重复挂。</summary>
+    private readonly List<IntPtr> _minSizeWindows = new();
+
+    /// <summary>
+    /// 给窗口设最小尺寸：拦截 WM_GETMINMAXINFO，把 MinTrackSize 换成我们要的值。
+    /// AppWindow 没有公开的 MinSize，只能做窗口子类化。
+    /// 用 SetWindowLongPtr 而不是 comctl32 的 SetWindowSubclass：后者要求委托长期存活，
+    /// 一旦漏持有就是野指针回调，代价太大。
+    /// </summary>
+    private void ApplyWindowMinSize()
+    {
+        try
+        {
+            // 客户区尺寸 → 像素。XamlRoot 此时可能还没就绪，就按 1.0 先算，
+            // 真正生效的是 WM_GETMINMAXINFO 里按窗口实际 DPI 换算的那一步
+            var scale = Root.XamlRoot?.RasterizationScale ?? 1.0;
+            if (scale <= 0)
+            {
+                scale = 1.0;
+            }
+
+            var minWidth = (int)Math.Round(MinWindowWidth * scale);
+            var minHeight = (int)Math.Round(MinWindowHeight * scale);
+
+            // 顶层窗口才是带边框、真正决定拖动尺寸的那一层；
+            // WinUI 还会包一层子 HWND，一并挂上以防消息被它先吃掉
+            var targets = new List<IntPtr>();
+            try
+            {
+                var top = WinRT.Interop.WindowNative.GetWindowHandle(this);
+                if (top != IntPtr.Zero)
+                {
+                    targets.Add(top);
+                }
+
+                if (top != IntPtr.Zero)
+                {
+                    EnumChildrenBuffer.Clear();
+                    EnumChildWindows(top, EnumChildCallback, IntPtr.Zero);
+                    foreach (var child in EnumChildrenBuffer)
+                    {
+                        if (!targets.Contains(child))
+                        {
+                            targets.Add(child);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                App.WriteCrashLog($"取窗口句柄失败：{ex}");
+            }
+
+            if (targets.Count == 0)
+            {
+                App.WriteCrashLog("设置最小窗口尺寸失败：没有拿到窗口句柄");
+                return;
+            }
+
+            foreach (var hwnd in targets)
+            {
+                _minSizeTargets[hwnd] = (minWidth, minHeight);
+                if (_minSizeWindows.Contains(hwnd))
+                {
+                    continue;
+                }
+
+                _minSizeWindows.Add(hwnd);
+                var prev = SetWindowLongPtr(hwnd, GwlpWndProc, Marshal.GetFunctionPointerForDelegate(MinSizeWindowProc));
+                if (prev == IntPtr.Zero)
+                {
+                    App.WriteCrashLog($"挂最小尺寸钩子失败：hwnd=0x{hwnd.ToInt64():X}");
+                    continue;
+                }
+
+                _minSizePrevProcs[hwnd] = prev;
+            }
+        }
+        catch (Exception ex)
+        {
+            App.WriteCrashLog($"设置最小窗口尺寸失败：{ex}");
+        }
+    }
+
+    private readonly Dictionary<IntPtr, (int Width, int Height)> _minSizeTargets = new();
+
+    private static IntPtr MinSizeWindowProcImpl(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
+    {
+        // 静态回调拿不到实例，通过当前窗口反查
+        var self = _minSizeOwner;
+        if (self is not null
+            && msg == WmGetMinMaxInfo
+            && self._minSizeTargets.TryGetValue(hWnd, out var min))
+        {
+            var info = Marshal.PtrToStructure<MinMaxInfo>(lParam);
+
+            // MinTrackSize 是整个窗口的大小（含边框 / 标题栏），我们要的是「内容区至少这么大」，
+            // 所以先把客户区尺寸拿去换算成窗口尺寸；只有顶层窗口才需要加边框
+            var frame = new RECT { Right = min.Width, Bottom = min.Height };
+            var style = GetWindowLong(hWnd, GwlStyle);
+            if ((style & WsChild) == 0)
+            {
+                AdjustWindowRectExForDpi(ref frame, style, false, GetWindowLong(hWnd, GwlExStyle), GetDpiForWindow(hWnd));
+            }
+
+            info.MinTrackSize.X = Math.Max(info.MinTrackSize.X, frame.Right - frame.Left);
+            info.MinTrackSize.Y = Math.Max(info.MinTrackSize.Y, frame.Bottom - frame.Top);
+            Marshal.StructureToPtr(info, lParam, false);
+            return IntPtr.Zero;
+        }
+
+        // 不是我们要处理的消息：转发给原来的 WndProc
+        if (self is not null && self._minSizePrevProcs.TryGetValue(hWnd, out var prev) && prev != IntPtr.Zero)
+        {
+            return CallWindowProc(prev, hWnd, msg, wParam, lParam);
+        }
+
+        return DefWindowProc(hWnd, msg, wParam, lParam);
+    }
+
+    /// <summary>当前窗口实例，供静态回调反查（单窗口应用，够用）。</summary>
+    private static MainWindow? _minSizeOwner;
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr DefWindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    private const int GwlStyle = -16;
+    private const int GwlExStyle = -20;
+    private const int WsChild = 0x40000000;
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern int GetWindowLong(IntPtr hWnd, int index);
+
+    [DllImport("user32.dll")]
+    private static extern bool AdjustWindowRectExForDpi(
+        ref RECT rect, int style, bool menu, int exStyle, uint dpi);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hWnd);
+
+    // ==================== 侧栏自适应 ====================
+
+    /// <summary>
+    /// 侧栏按容器高度在两种排布之间切换：
+    /// 够高 → 上下两组分开（靠 Window 里那两行 Grid 自然分隔，中间空白先被吃掉）；
+    /// 不够高 → 换成 ScrollViewer 里的单列一队按钮，任何尺寸都不重叠。
+    /// </summary>
+    private void UpdateRailLayout()
+    {
+        var available = Root.ActualHeight;
+        var needCompact = available > 0 && available < RailNaturalHeight;
+
+        if (needCompact == _railCompact)
+        {
+            return;
+        }
+
+        _railCompact = needCompact;
+        Rail.Visibility = needCompact ? Visibility.Collapsed : Visibility.Visible;
+        RailScroll.Visibility = needCompact ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// 正常态与兜底两套侧栏按钮的配对：选中态统一由 UpdateRailSelection 依据 Tag 里的页面类型设置。
+    /// </summary>
+    private IEnumerable<(RailButton Normal, RailButton Compact)> RailPairs
+    {
+        get
+        {
+            yield return (RailHome, RailHomeCompact);
+            yield return (RailLibrary, RailLibraryCompact);
+            yield return (RailSearch, RailSearchCompact);
+            yield return (RailFavorites, RailFavoritesCompact);
+            yield return (RailServers, RailServersCompact);
+            yield return (RailRefresh, RailRefreshCompact);
+            yield return (RailSettings, RailSettingsCompact);
         }
     }
 
@@ -329,12 +601,13 @@ public sealed partial class MainWindow : Window
         // 面包屑已经按页面栈显示了正确路径，滑块和高亮必须跟着停在来源那一栏。
         var section = CurrentSection();
 
-        RailHome.IsActive = section == typeof(HomePage);
-        RailLibrary.IsActive = section == typeof(LibraryPage);
-        RailSearch.IsActive = section == typeof(SearchPage);
-        RailFavorites.IsActive = section == typeof(FavoritesPage);
-        RailServers.IsActive = section == typeof(ServersPage);
-        RailSettings.IsActive = section == typeof(SettingsPage);
+        // XAML 里 Tag 写的是页面类型名（字符串），两套侧栏按钮都靠它对齐选中态
+        foreach (var (normal, compact) in RailPairs)
+        {
+            var active = normal.Tag as string == section.Name;
+            normal.IsActive = active;
+            compact.IsActive = active;
+        }
 
         UpdatePillThumb(section);
     }

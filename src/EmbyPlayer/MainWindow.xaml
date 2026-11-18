@@ -42,11 +42,17 @@
         <!-- ============ 悬浮侧边栏 ============
              不占布局宽度（浮在内容之上）；只有圆点本身参与命中测试；
              鼠标移上去图标放大并在右侧显示文字。
-             主导航（首页 + 媒体库 胶囊、搜索、收藏）垂直居中；服务器与设置放左下角。 -->
+             主导航（首页 + 媒体库 胶囊、搜索、收藏）在上，服务器与设置在下。
+             两组按钮用 Grid 行分隔、各自居中，用户缩窗口时中间的空白先被吃掉，
+             不会再出现「收藏」和「服务器」两个圆互相压在一起 -->
         <Grid x:Name="Rail" Margin="16,0,0,0"
               HorizontalAlignment="Left" VerticalAlignment="Stretch">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Left" Spacing="10">
+            <StackPanel Grid.Row="0" VerticalAlignment="Center" HorizontalAlignment="Left" Spacing="10">
                 <!-- 首页 + 媒体库：共用一个竖长胶囊外壳，两个按钮上下嵌在里面（各自隐去圆底）。
                      外壳宽度 46，与单个圆形按钮同宽，不能比别的按钮胖；里面的按钮与滑块窄一些 -->
                 <Border Width="46" CornerRadius="23" Padding="3" HorizontalAlignment="Left"
@@ -70,29 +76,58 @@
 
                         <StackPanel Orientation="Vertical" Spacing="2" HorizontalAlignment="Center">
                             <views:RailButton x:Name="RailHome" Label="首页" Glyph="&#xE80F;"
+                                              Tag="HomePage"
                                               InPill="True" Invoked="RailHome_Invoked" />
                             <views:RailButton x:Name="RailLibrary" Label="媒体库" Glyph="&#xE8F1;"
+                                              Tag="LibraryPage"
                                               InPill="True" Invoked="RailLibrary_Invoked" />
                         </StackPanel>
                     </Grid>
                 </Border>
 
                 <views:RailButton x:Name="RailSearch" Label="搜索" Glyph="&#xE721;"
-                                  Invoked="RailSearch_Invoked" />
+                                  Tag="SearchPage" Invoked="RailSearch_Invoked" />
                 <views:RailButton x:Name="RailFavorites" Label="收藏" Glyph="&#xE734;"
-                                  Invoked="RailFavorites_Invoked" />
+                                  Tag="FavoritesPage" Invoked="RailFavorites_Invoked" />
             </StackPanel>
 
-            <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Left"
+            <StackPanel Grid.Row="1" VerticalAlignment="Bottom" HorizontalAlignment="Left"
                         Margin="0,0,0,24" Spacing="10">
                 <views:RailButton x:Name="RailServers" Label="服务器" Glyph="&#xE774;"
-                                  Invoked="RailServers_Invoked" />
+                                  Tag="ServersPage" Invoked="RailServers_Invoked" />
                 <views:RailButton x:Name="RailRefresh" Label="刷新" Glyph="&#xE72C;"
                                   Invoked="RailRefresh_Invoked" />
                 <views:RailButton x:Name="RailSettings" Label="设置" Glyph="&#xE713;"
-                                  Invoked="RailSettings_Invoked" />
+                                  Tag="SettingsPage" Invoked="RailSettings_Invoked" />
             </StackPanel>
         </Grid>
+
+        <!-- ============ 侧栏高度不够时的兜底 ============
+             窗口再被压矮（或缩放比例很大）时，上下两组按钮合计高度会超过窗口，
+             中间的空白被吃光后仍会撞在一起。这里换成一列统一的圆钮，放进纵向
+             ScrollViewer，任何尺寸下都不重叠、也不会有点击区被另一半盖住。
+             两套按钮的选中态由代码同步（见 UpdateRailSelection）。 -->
+        <ScrollViewer x:Name="RailScroll"
+                      HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                      Visibility="Collapsed">
+            <StackPanel HorizontalAlignment="Left" Margin="16,12,0,12" Spacing="10">
+                <views:RailButton x:Name="RailHomeCompact" Label="首页" Glyph="&#xE80F;"
+                                  Tag="HomePage" Invoked="RailHome_Invoked" />
+                <views:RailButton x:Name="RailLibraryCompact" Label="媒体库" Glyph="&#xE8F1;"
+                                  Tag="LibraryPage" Invoked="RailLibrary_Invoked" />
+                <views:RailButton x:Name="RailSearchCompact" Label="搜索" Glyph="&#xE721;"
+                                  Tag="SearchPage" Invoked="RailSearch_Invoked" />
+                <views:RailButton x:Name="RailFavoritesCompact" Label="收藏" Glyph="&#xE734;"
+                                  Tag="FavoritesPage" Invoked="RailFavorites_Invoked" />
+                <views:RailButton x:Name="RailServersCompact" Label="服务器" Glyph="&#xE774;"
+                                  Tag="ServersPage" Invoked="RailServers_Invoked" />
+                <views:RailButton x:Name="RailRefreshCompact" Label="刷新" Glyph="&#xE72C;"
+                                  Invoked="RailRefresh_Invoked" />
+                <views:RailButton x:Name="RailSettingsCompact" Label="设置" Glyph="&#xE713;"
+                                  Tag="SettingsPage" Invoked="RailSettings_Invoked" />
+            </StackPanel>
+        </ScrollViewer>
 
         <!-- ============ 搜索弹层 ============
              点侧栏「搜索」不再直接换页：先在图标右侧弹出一个胶囊输入框 +

@@ -32,13 +32,21 @@
                         <GradientStop Color="#7DF3F3F3" Offset="0.70" />
                         <GradientStop Color="#FFF3F3F3" Offset="1" />
                     </LinearGradientBrush>
-                    <!-- 首页大图底部渐隐：亮主题下大图上的标题是白字，不能一路淡到浅底，
-                         否则字会看不见；这里收在近黑色，仍是一条平滑的长渐变 -->
+                    <!-- 首页大图底部渐隐：亮主题下不压黑，只有透明 → 半透明的一层浅白，
+                         大图一路淡出到页面底色（#F3F3F3），不会出现一条黑带；
+                         末端只到 76% 白，留一点底衬让左下白字标题在亮画面上依然读得清 -->
                     <LinearGradientBrush x:Key="HeroBackdropFade" StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#00F3F3F3" Offset="0" />
+                        <GradientStop Color="#00F3F3F3" Offset="0.30" />
+                        <GradientStop Color="#66F3F3F3" Offset="0.70" />
+                        <GradientStop Color="#C2F3F3F3" Offset="1" />
+                    </LinearGradientBrush>
+                    <!-- 大图左下文字衬底：亮主题用轻微压暗的透明黑，只压住画面底部一小条，
+                         保证渐变透明后白字标题仍读得清，又不会把整块画面变黑 -->
+                    <LinearGradientBrush x:Key="HeroTextScrim" StartPoint="0,0" EndPoint="0,1">
                         <GradientStop Color="#00000000" Offset="0" />
-                        <GradientStop Color="#00000000" Offset="0.34" />
-                        <GradientStop Color="#66000000" Offset="0.72" />
-                        <GradientStop Color="#E6000000" Offset="1" />
+                        <GradientStop Color="#33000000" Offset="0.55" />
+                        <GradientStop Color="#66000000" Offset="1" />
                     </LinearGradientBrush>
                     <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#141D3FD8" />
                     <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPointerOver" Color="#1F1D3FD8" />
@@ -113,6 +121,12 @@
                         <GradientStop Color="#00111111" Offset="0.34" />
                         <GradientStop Color="#8C111111" Offset="0.72" />
                         <GradientStop Color="#FF111111" Offset="1" />
+                    </LinearGradientBrush>
+                    <!-- 大图左下文字衬底：暗主题底部本就是深色，再压一点即可，几乎不可见 -->
+                    <LinearGradientBrush x:Key="HeroTextScrim" StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#00000000" Offset="0" />
+                        <GradientStop Color="#26000000" Offset="0.55" />
+                        <GradientStop Color="#4D000000" Offset="1" />
                     </LinearGradientBrush>
                     <!-- 暗主题：侧边栏与内容区纯黑 -->
                     <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="#FF000000" />

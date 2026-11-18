@@ -23,25 +23,27 @@
 
                 <Border Grid.Row="0" CornerRadius="8" Background="#FF2A2A2E">
                     <Grid>
-                        <Image Source="{x:Bind Poster, Mode=OneWay}" Stretch="UniformToFill"
-                               Visibility="{x:Bind ImageVisibility, Mode=OneWay}" />
-                        <TextBlock Text="{x:Bind Initial, Mode=OneWay}" FontSize="28" Foreground="#FF777777"
+                        <!-- ItemCard 是创建后不再改的一次性数据，这里全部用 OneTime（x:Bind 默认），
+                             写 OneWay 会触发 WMC1506：这些属性不会发变更通知，绑定也不会更新 -->
+                        <Image Source="{x:Bind Poster}" Stretch="UniformToFill"
+                               Visibility="{x:Bind ImageVisibility}" />
+                        <TextBlock Text="{x:Bind Initial}" FontSize="28" Foreground="#FF777777"
                                    HorizontalAlignment="Center" VerticalAlignment="Center"
-                                   Visibility="{x:Bind ImagePlaceholderVisibility, Mode=OneWay}" />
+                                   Visibility="{x:Bind ImagePlaceholderVisibility}" />
                         <!-- 观看进度条贴在缩略图底边 -->
                         <ProgressBar VerticalAlignment="Bottom" MinHeight="3" Height="3"
                                      Minimum="0" Maximum="100" Margin="0"
-                                     Value="{x:Bind ResumePercent, Mode=OneWay}"
-                                     Visibility="{x:Bind ResumeVisibility, Mode=OneWay}" />
+                                     Value="{x:Bind ResumePercent}"
+                                     Visibility="{x:Bind ResumeVisibility}" />
                     </Grid>
                 </Border>
 
                 <StackPanel Grid.Row="1" Margin="2,8,2,0" Spacing="2">
-                    <TextBlock Text="{x:Bind Name, Mode=OneWay}" FontSize="13" FontWeight="SemiBold"
+                    <TextBlock Text="{x:Bind Name}" FontSize="13" FontWeight="SemiBold"
                                MaxLines="1" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{x:Bind SubtitleOrYear, Mode=OneWay}" FontSize="11" Opacity="0.6"
+                    <TextBlock Text="{x:Bind SubtitleOrYear}" FontSize="11" Opacity="0.6"
                                MaxLines="1" TextTrimming="CharacterEllipsis"
-                               Visibility="{x:Bind SubtitleOrYearVisibility, Mode=OneWay}" />
+                               Visibility="{x:Bind SubtitleOrYearVisibility}" />
                 </StackPanel>
             </Grid>
         </DataTemplate>
@@ -81,8 +83,12 @@
                            Stretch="UniformToFill" />
 
                     <!-- 底部渐隐：与详情页背景图同一条曲线（下半部分一路淡到页面底色），
-                         大图与下方内容之间不再是一条硬切线；终点色 = 页面底色，衔接无缝 -->
+                         大图与下方内容之间不再是一条硬切线；终点色 = 页面底色，衔接无缝。
+                         亮主题下是透明 → 浅白的淡出，不是压黑 -->
                     <Rectangle IsHitTestVisible="False" Fill="{ThemeResource HeroBackdropFade}" />
+                    <!-- 画面底部一小条压暗，只为让左下白字标题在任何画面上都读得清；
+                         主题化，暗色下几乎不可见，不会给整块大图蒙一层黑 -->
+                    <Rectangle IsHitTestVisible="False" Fill="{ThemeResource HeroTextScrim}" />
                     <!-- 左侧再压一层，保证左下标题在浅色画面上也读得清 -->
                     <Rectangle IsHitTestVisible="False">
                         <Rectangle.Fill>

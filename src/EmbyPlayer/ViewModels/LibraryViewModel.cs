@@ -184,7 +184,7 @@ public partial class LibraryViewModel : ObservableObject
             {
                 // 停在本来就是概览的位置：SelectedView 没变，属性变更不触发，
                 // 手动补一次（刷新按钮 / 换服务器时走的正是这条路径）
-                _ = LoadSectionsAsync();
+                LoadSectionSkeleton();
             }
         }
         catch (Exception ex)
@@ -244,7 +244,7 @@ public partial class LibraryViewModel : ObservableObject
         if (IsOverview)
         {
             // 概览不走排序 / 网格加载，直接拉各分类的数据
-            _ = LoadSectionsAsync();
+            LoadSectionSkeleton();
             return;
         }
 
@@ -348,8 +348,9 @@ public partial class LibraryViewModel : ObservableObject
     /// <summary>
     /// 搭概览的骨架：继续观看 + 每个媒体分类的「最新添加」。
     /// 各分类的卡片由独立任务并行填充，先出骨架后出内容，单个分类失败/为空就整行移除。
+    /// 骨架本身是同步搭出来的，真正的异步都在下面两个填充任务里，所以这里不标 async。
     /// </summary>
-    private async Task LoadSectionsAsync()
+    private void LoadSectionSkeleton()
     {
         _sectionsCts?.Cancel();
         var cts = new CancellationTokenSource();
